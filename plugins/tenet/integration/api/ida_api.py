@@ -218,8 +218,9 @@ class IDAContextAPI(DisassemblerContextAPI):
 
             # fetch code segments
             seg = ida_segment.getseg(seg_address)
-            if seg.sclass != ida_segment.SEG_CODE:
-                continue
+            # IDA bug
+            #if seg.sclass != ida_segment.SEG_CODE:
+            #    continue
 
             current_address = seg_address
             end_address = seg.end_ea
@@ -512,7 +513,7 @@ class DockableWindow(ida_kernwin.PluginForm):
 
         if ida_pro.IDA_SDK_VERSION < 760:
             self.__dock_size_hack()
-
+    
     def OnClose(self, foo):
         self.visible = False
         #print("Closing", self.title)
@@ -533,7 +534,7 @@ class DockableWindow(ida_kernwin.PluginForm):
             WOPN_SZHINT = 0x200
         
             # create the dockable widget, without actually showing it
-            self.Show(self.title, options=ida_kernwin.PluginForm.WOPN_CREATE_ONLY)
+            self.Show(self.title, options=ida_kernwin.PluginForm.WOPN_CREATE_ONLY | ida_kernwin.WOPN_NOT_CLOSED_BY_ESC)
 
             # use some kludge to display our widget, and enforce the use of its sizehint
             ida_widget = self.GetWidget()
@@ -542,7 +543,7 @@ class DockableWindow(ida_kernwin.PluginForm):
 
         # no hax required for IDA 7.6 and newer
         else:
-            self.Show(self.title)
+            self.Show(self.title, options=ida_kernwin.WOPN_NOT_CLOSED_BY_ESC)
             self.visible = True
             dock_position |= ida_kernwin.DP_SZHINT
 

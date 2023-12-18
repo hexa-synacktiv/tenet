@@ -1,4 +1,27 @@
-# Tenet - A Trace Explorer for Reverse Engineers
+# Tenet - A Trace Explorer for Reverse Engineers (modified version for Frinet)
+
+:warning: This fork is intended to be used with [Frinet](https://github.com/synacktiv/frinet)
+
+It is still compatible with legacy Tenet traces. However, the new features are still experimental, and some legacy feature such as the support for serialized traces were removed for the time being. 
+As such, we did not make a pull request yet, but it will happen when the legacy features are reintroduced and more testing has been done, or if [gaasedelen](https://github.com/gaasedelen) is interested in having our new features introduced.
+
+The new features include :
+
+* The **Call tree view** window gives a clickable indented overview of the whole execution trace.
+* The **Seach bytes** feature in the **Memory view** context menu, a pattern search in memory across the whole trace
+* Multiple **Memory views** and more contextual menu options
+* **arm64**/**arm** support (did not requires much work as Tenet is architecture-agnostic)
+* Minor fixes and miscellaneous small design modifications
+
+More information about them is available at TODO_BLOGPOST_URL.
+
+Screenshot of the new features (**Call tree view** & **Seach bytes** are visible) :
+
+TODO_SCREENSHOT
+
+The original README.md content is left unmodified below.
+
+# Original README
 
 <p align="center">
 <img alt="Tenet Trace Explorer" src="screenshots/tenet_overview.gif"/>

@@ -2,6 +2,9 @@ from tenet.ui import *
 from tenet.types import *
 from tenet.util.qt.util import copy_to_clipboard
 from tenet.integration.api import DockableWindow
+import struct
+import ida_kernwin
+import idaapi
 
 #------------------------------------------------------------------------------
 # hex.py -- Hex Dump Controller
@@ -124,6 +127,10 @@ class HexController(object):
 
         #self.reset_selection(0)
         self.refresh_memory()
+        try:
+            ida_kernwin.activate_widget(idaapi.find_widget(self._title),True)
+        except:
+            print("Error focusing on window "+self._title)
 
     def set_data_size(self, num_bytes):
         """
@@ -132,10 +139,7 @@ class HexController(object):
         self.model.data_size = num_bytes
         self.refresh_memory()
 
-    def copy_selection(self, start_address, end_address):
-        """
-        Copy the selected range of bytes to the system clipboard.
-        """
+    def get_selection(self, start_address, end_address, reverse=False):
         assert end_address > start_address
         if not self.reader:
             return ''
@@ -146,13 +150,24 @@ class HexController(object):
 
         # dump bytes to hex
         output = []
-        for i in range(num_bytes):
+        for j in range(num_bytes):
+            i = num_bytes-1-j if reverse else j
+
             if memory.mask[i] == 0xFF:
                 output.append("%02X" % memory.data[i])
             else:
                 output.append("??")
+                
+        byte_string = ''.join(output)
+        return byte_string
 
-        byte_string = ' '.join(output)
+
+    def copy_selection(self, start_address, end_address, reverse=False):
+        """
+        Copy the selected range of bytes to the system clipboard.
+        """
+        byte_string = self.get_selection(start_address, end_address, reverse)
+
         copy_to_clipboard(byte_string)
 
         return byte_string
@@ -213,6 +228,39 @@ class HexController(object):
             return
 
         self.view.refresh()
+    
+    def follow_in_dump(self, stack_address, idx):
+        """
+        Follow the pointer at a given stack address in the memory dump.
+        """
+        POINTER_SIZE = self.pctx.reader.arch.POINTER_SIZE 
+
+        # align the given stack address (which we will read..)
+        stack_address &= ~(POINTER_SIZE - 1)
+
+        #
+        # compute the relative index of the stack entry, which we will
+        # use to carve data from the currently visible stack model
+        #
+
+        relative_index = stack_address - self.model.address
+
+        # attempt to carve the data and validity mask from the stack model
+        try:
+            data = self.model.data[relative_index:relative_index+POINTER_SIZE]
+            mask = self.model.mask[relative_index:relative_index+POINTER_SIZE]
+        except:
+            return False
+
+        # ensure the carved data is fully resolved (e.g. there are no unknown bytes)
+        if not (len(mask) == POINTER_SIZE and list(set(mask)) == [0xFF]):
+            return False
+
+        # unpack the carved data as a pointer
+        parsed_address = struct.unpack("I" if POINTER_SIZE == 4 else "Q", data)[0]
+        
+        # navigate the memory dump window to the 'pointer' we carved off the stack
+        self.pctx.memories[idx].navigate(parsed_address)
 
 class HexModel(object):
     """
@@ -303,3 +351,5 @@ class HexModel(object):
             return
         self._aux_format = value
         #self.refresh()
+
+    

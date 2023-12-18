@@ -143,12 +143,12 @@ class RegisterController(object):
         self._clear_register_value_focus()
         self.model.focused_reg_name = None
 
-    def follow_in_dump(self, reg_name):
+    def follow_in_dump(self, reg_name, idx):
         """
         Follow a given register value in the memory dump.
         """
         address = self.model.registers[reg_name]
-        self.pctx.memory.navigate(address)
+        self.pctx.memories[idx].navigate(address)
 
     def _clear_register_value_focus(self):
         """

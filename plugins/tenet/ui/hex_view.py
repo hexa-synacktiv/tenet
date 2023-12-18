@@ -1,9 +1,43 @@
 import struct
 
+import tenet
 from tenet.types import *
 from tenet.util.qt import *
+import re
+import ida_kernwin, ida_idaapi
 
 INVALID_ADDRESS = -1
+
+
+class SearchView(QtWidgets.QWidget):
+    def __init__(self, items, hexview, searchterm):
+        super(SearchView, self).__init__()
+        self.list = QtWidgets.QListWidget(self)
+        self.hexview = hexview
+        
+        for item in items:
+            qitem = QtWidgets.QListWidgetItem(f"Position {item[0]} address {hex(item[1])}", self.list)
+            qitem.idx = item[0]
+            qitem.addr = item[1]
+            
+        self.list.itemClicked.connect(self.on_item_clicked)
+        self.list.setMinimumWidth(self.list.sizeHintForColumn(0)+ 50)
+        
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.addWidget(QtWidgets.QLabel(f"Memory search results for {searchterm}"))
+        layout.addWidget(self.list)
+        
+        self.setLayout(layout)
+        self.setWindowFlags(QtCore.Qt.WindowStaysOnTopHint)
+        
+        #self.setFixedSize(self.sizeHint()*1)
+        self.adjustSize()
+        
+    def on_item_clicked(self, item):
+        self.hexview.controller.reader.seek(item.idx)
+        self.hexview.controller.navigate(item.addr)
+
+
 
 class HexView(QtWidgets.QAbstractScrollArea):
     """
@@ -58,10 +92,24 @@ class HexView(QtWidgets.QAbstractScrollArea):
         Initialize the right click context menu actions.
         """
 
+        copy_types = {"In order":False, "Reverse order":True}
+
         # create actions to show in the context menu
-        self._action_copy = QtWidgets.QAction("Copy", None)
+        self._action_copy_options = [
+            QtWidgets.QAction("In order", None),
+            QtWidgets.QAction("Reverse order", None)
+        ]
+        self._copy_menu = QtWidgets.QMenu("Copy")
+
+        self._copy_menu.addActions(self._action_copy_options)
+
+        self._action_addr = QtWidgets.QAction("Go to Address", None)
+        self._action_search = QtWidgets.QAction("Search bytes", None)
+        self._action_search_selection = QtWidgets.QAction("Search selected bytes", None)
         self._action_clear = QtWidgets.QAction("Clear mem breakpoints", None)
-        self._action_follow_in_dump = QtWidgets.QAction("Follow in dump", None)
+        self._actions_follow_in_dump = []
+        for i in range(tenet.context.NMEM):
+            self._actions_follow_in_dump.append(QtWidgets.QAction("Follow in dump "+str(i+1), None))
 
         bp_types = \
         [
@@ -197,7 +245,7 @@ class HexView(QtWidgets.QAbstractScrollArea):
         self._width_aux = (self.model.num_bytes_per_line * self._char_width) + self._char_width * 2
 
         # enforce a minimum view width, to ensure all text stays visible
-        self.setMinimumWidth(self._pos_aux + self._width_aux)
+        self.setMinimumWidth(int(self._pos_aux + self._width_aux))
 
     def full_size(self):
         """
@@ -213,7 +261,7 @@ class HexView(QtWidgets.QAbstractScrollArea):
 
         height *= self._char_height
 
-        return QtCore.QSize(width, height)
+        return QtCore.QSize(int(width), int(height))
 
     def point_to_index(self, position):
         """
@@ -360,6 +408,58 @@ class HexView(QtWidgets.QAbstractScrollArea):
         #self._notify_selection_changed(new_start, new_end)
         self.viewport().update()
 
+    def _ask_navigate_addr(self):
+        address = ida_kernwin.ask_addr(self.model.address, "Jump to address in memory")
+        if address != None and address != ida_idaapi.BADADDR:
+            self.controller.navigate(address)
+
+
+    def _search(self):
+        searchstring = ida_kernwin.ask_str("", 89456, "Search bytes (Ascii, \\xXX for raw bytes, ? for wildcard byte)")
+        fake_pattern = re.sub(b"\\\\x([a-fA-F0-9]{2,2})", lambda m: b" ", searchstring.encode())
+        wildcard_positions = [i for i,e in enumerate(fake_pattern) if e == ord("?")]
+
+        pattern = re.sub(b"\\\\x([a-fA-F0-9]{2,2})", lambda m: bytes.fromhex(m.group(1).decode()), searchstring.encode())
+        pattern = list(pattern)
+        for wildpos in wildcard_positions:
+            pattern[wildpos] = -1
+
+        self.do_search(searchstring, pattern)
+
+    def _search_from_selection(self):
+        mem = self.controller.get_selection(self._selection_start, self._selection_end)
+        
+        wildcard_positions = [i for i in range(len(mem)//2) if mem[i*2:i*2+2] == "??"]
+
+        pattern = mem.replace("??","?")
+
+        pattern = re.sub(b"([a-fA-F0-9]{2,2})", lambda m: bytes.fromhex(m.group(1).decode()), pattern.encode())
+        pattern = list(pattern)
+        for wildpos in wildcard_positions:
+            pattern[wildpos] = -1
+
+        print(pattern)
+        self.do_search(mem, pattern)
+
+    def do_search(self, searchstring, pattern):
+        global searchview
+
+        while pattern and pattern[-1]==-1:pattern.pop()
+
+        if len(pattern)<2:
+            ida_kernwin.warning("Pattern must be at least 2 bytes long !")
+            return
+
+        if not self.controller.reader.trace.searchable_memory.finalized:
+            ida_kernwin.warning("Click ok to compute search cache (required once per trace file, may take a few seconds)")
+            self.controller.reader.trace.searchable_memory.finalize()
+
+        search_results = self.controller.reader.trace.searchable_memory.search(pattern)
+        if len(search_results)>=1000:
+            ida_kernwin.warning("Search results capped to 1000")
+        searchview = SearchView(sorted(search_results), self, searchstring)
+        searchview.show()
+
     #--------------------------------------------------------------------------
     # Signals
     #--------------------------------------------------------------------------
@@ -397,11 +497,17 @@ class HexView(QtWidgets.QAbstractScrollArea):
 
         # show the 'copy text' option if the user has a region selected
         if selected_length > 1 and ctx_type == BreakpointType.NONE:
-            menu.addAction(self._action_copy)
+            menu.addMenu(self._copy_menu)
+            # show the 'search selected bytes' action
+            menu.addAction(self._action_search_selection)
 
-        # only show the 'follow in dump' if the controller supports it
-        if hasattr(self.controller, "follow_in_dump"):
-            menu.addAction(self._action_follow_in_dump)
+        # show the 'search bytes' action
+        menu.addAction(self._action_search)
+
+        menu.addSeparator()
+
+        for i in range(tenet.context.NMEM):
+            menu.addAction(self._actions_follow_in_dump[i])
 
         menu.addSeparator()
 
@@ -412,6 +518,10 @@ class HexView(QtWidgets.QAbstractScrollArea):
 
         for action, access_type in self._action_break.items():
             action.setChecked(ctx_type == access_type)
+
+        # show the 'go to address' action
+        menu.addAction(self._action_addr)
+
 
         if selected_length > 0:
 
@@ -435,12 +545,25 @@ class HexView(QtWidgets.QAbstractScrollArea):
         # execute the action selected by the suer in the right click menu
         #
 
-        if action == self._action_copy:
-            self.controller.copy_selection(self._selection_start, self._selection_end)
+        if action in self._action_copy_options:
+            reverse = action==self._action_copy_options[1]
+            self.controller.copy_selection(self._selection_start, self._selection_end, reverse)
             return
 
-        elif action == self._action_follow_in_dump:
-            self.controller.follow_in_dump(self._selection_start)
+        elif action in self._actions_follow_in_dump:
+            self.controller.follow_in_dump(self._selection_start, self._actions_follow_in_dump.index(action))
+            return
+
+        elif action == self._action_addr:
+            self._ask_navigate_addr()
+            return
+        
+        elif action == self._action_search:
+            self._search()
+            return
+
+        elif action == self._action_search_selection:
+            self._search_from_selection()
             return
 
         elif action == self._action_clear:
@@ -600,10 +723,7 @@ class HexView(QtWidgets.QAbstractScrollArea):
         Qt overload to capture key press events.
         """
         if e.key() == QtCore.Qt.Key_G:
-            import ida_kernwin, ida_idaapi
-            address = ida_kernwin.ask_addr(self.model.address, "Jump to address in memory")
-            if address != None and address != ida_idaapi.BADADDR:
-                self.controller.navigate(address)
+            self._ask_navigate_addr()
             e.accept()
         return super(HexView, self).keyPressEvent(e)
 
@@ -694,17 +814,17 @@ class HexView(QtWidgets.QAbstractScrollArea):
         painter.fillRect(event.rect(), self._palette.hex_data_bg)
 
         # paint address area background
-        address_area_rect = QtCore.QRect(0, event.rect().top(), self._width_addr, self.height())
+        address_area_rect = QtCore.QRect(0, event.rect().top(), int(self._width_addr), int(self.height()))
         painter.fillRect(address_area_rect, self._palette.hex_address_bg)
 
         # paint line between address area and hex area
         painter.setPen(self._palette.hex_separator)
-        painter.drawLine(self._width_addr, event.rect().top(), self._width_addr, self.height())
+        painter.drawLine(int(self._width_addr), event.rect().top(), int(self._width_addr), int(self.height()))
 
         # paint line between hex area and auxillary area
         line_pos = self._pos_aux
         painter.setPen(self._palette.hex_separator)
-        painter.drawLine(line_pos, event.rect().top(), line_pos, self.height())
+        painter.drawLine(int(line_pos), event.rect().top(), int(line_pos), int(self.height()))
 
         for line_idx in range(0, self.num_lines_visible):
             self._paint_line(painter, line_idx)
@@ -735,7 +855,7 @@ class HexView(QtWidgets.QAbstractScrollArea):
         pack_len = self.model.pointer_size
         address_fmt = '%016X' if pack_len == 8 else '%08X'
         address_text = address_fmt % address
-        painter.drawText(self._pos_addr, y, address_text)
+        painter.drawText(int(self._pos_addr), int(y), address_text)
 
         self._default_color = self._palette.hex_text_fg
         if address < self.model.fade_address:
@@ -775,7 +895,7 @@ class HexView(QtWidgets.QAbstractScrollArea):
                 else:
                     ch = chr(ch)
 
-                painter.drawText(x_pos_aux, y, ch)
+                painter.drawText(int(x_pos_aux), int(y), ch)
                 x_pos_aux += self._char_width
 
     def _paint_hex_item(self, painter, byte_idx, stop_idx, x, y):
@@ -960,7 +1080,7 @@ class HexView(QtWidgets.QAbstractScrollArea):
                 painter.setPen(QtCore.Qt.NoPen)
 
             painter.setBrush(bg_color)
-            painter.drawRect(x_bg, y_bg, width, height)
+            painter.drawRect(int(x_bg), int(y_bg), int(width), int(height))
 
         painter.setPen(fg_color)
 
@@ -968,7 +1088,7 @@ class HexView(QtWidgets.QAbstractScrollArea):
         # paint text
         #
 
-        painter.drawText(x, y, text)
+        painter.drawText(int(x), int(y), text)
 
     def _paint_magic(self, painter, byte_idx, stop_idx, x, y):
         """
@@ -1006,7 +1126,7 @@ class HexView(QtWidgets.QAbstractScrollArea):
 
         # draw the pointer
         pointer_str = ("0x%08X " % value).rjust(num_chars)
-        painter.drawText(x, y, pointer_str)
+        painter.drawText(int(x), int(y), pointer_str)
         x += num_chars * self._char_width
 
         return (byte_idx + self.model.pointer_size, x, y)

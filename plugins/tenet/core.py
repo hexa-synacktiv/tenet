@@ -69,9 +69,10 @@ class TenetCore(object):
         """
         if not self.loaded:
             return
-
+        
         pmsg("Unloading %s..." % self.PLUGIN_NAME)
 
+        
         # mark the core as 'unloaded' and teardown its components
         self.loaded = False
 

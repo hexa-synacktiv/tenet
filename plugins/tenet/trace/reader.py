@@ -372,10 +372,11 @@ class TraceReader(object):
             # try and ensure this is 'correct' but, step over and reverse
             # step over are kind of an imperfect science as is...
             #
-
+            """
             if maybe_ret_address != address:
                 self.seek(self.idx - 1)
                 return
+            """
 
         trace_prev_address = self.analysis.rebase_pointer(bin_prev_address)
 
@@ -753,7 +754,6 @@ class TraceReader(object):
         If step_over=True, and a disassembler context is available to the
         trace reader, it will attempt to step over calls while stepping.
         """
-
         # single step, return (reverse) canonical trace sequence
         if not step_over:
             start = max(-1, self.idx - 1)
@@ -765,6 +765,7 @@ class TraceReader(object):
         trace_address = self.get_ip(idx)
         bin_address = self.analysis.rebase_pointer(trace_address)
 
+        
         # (reverse) step over any call instructions
         while len(output) < n and idx > 0:
 
@@ -783,7 +784,6 @@ class TraceReader(object):
                 except ValueError:
                     print("TODO: stack read failed")
                     maybe_ret_address = None
-
                 #
                 # if the address off the stack matches the current address,
                 # we can assume that we just returned from somewhere.
@@ -797,10 +797,10 @@ class TraceReader(object):
                 # step over are kind of an imperfect science as is...
                 #
 
-                if maybe_ret_address == trace_address:
-                    trace_prev_address = self.analysis.rebase_pointer(bin_prev_address)
-                    prev_idx = self.find_prev_execution(trace_prev_address, idx)
-                    did_step_over = bool(prev_idx != -1)
+                #if maybe_ret_address == trace_address:
+                trace_prev_address = self.analysis.rebase_pointer(bin_prev_address)
+                prev_idx = self.find_prev_execution(trace_prev_address, idx)
+                did_step_over = bool(prev_idx != -1)
 
             #
             # if it doesn't look like we just returned from a call, we
@@ -810,11 +810,9 @@ class TraceReader(object):
             # happens to jump onto an instruction immediately after a call,
             # which causes the above 'stack inspection' to fail
             #
-
             if not did_step_over:
                 trace_prev_address = self.analysis.rebase_pointer(bin_prev_address)
                 prev_idx = self.find_prev_execution(trace_prev_address, idx)
-
             #
             # uh, wow okay we're pretty lost and have no idea if there is
             # actually something that can be reverse step-over'd. just revert
@@ -846,7 +844,6 @@ class TraceReader(object):
         If step_over=True, and a disassembler context is available to the
         trace reader, it will attempt to step over calls while stepping.
         """
-
         # single step, return canonical trace sequence
         if not step_over:
             start = min(self.idx + 1, self.trace.length)
@@ -1399,6 +1396,7 @@ class TraceReader(object):
 
         # fail, reached end of trace
         return -1
+
 
     def find_next_register_change(self, reg_name, idx=None):
         """

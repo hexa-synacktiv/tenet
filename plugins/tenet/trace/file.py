@@ -55,7 +55,7 @@ import collections
 
 try:
     from tenet.util.log import pmsg
-    from tenet.trace.arch import ArchAMD64, ArchX86
+    from tenet.trace.arch import ArchAMD64, ArchX86, ArchARM, ArchARM64
     from tenet.trace.types import TraceMemory
 
 #
@@ -65,7 +65,7 @@ try:
 #
 
 except ImportError:
-    from arch import ArchAMD64, ArchX86
+    from arch import ArchAMD64, ArchX86, ArchARM, ArchARM64
     from .types import TraceMemory 
     pmsg = print
 
@@ -228,6 +228,9 @@ class TraceFile(object):
         if not self.arch:
             self.arch = ArchAMD64()
 
+        # ASLR slide if present in file
+        self.slide = None
+
         # a sorted array of all unique PC / IP (eg, EIP, or RIP) that appear in the trace
         self.ip_addrs = None
 
@@ -296,12 +299,17 @@ class TraceFile(object):
         # the hash of the original / source log file
         self.original_hash = None
 
+        # Used for the memory search feature
+        self.searchable_memory = SearchableMemory()
+
         #
         # now that you have some idea of how the trace file is going to be
         # organized... let's actually go and try to load one
         #
 
         self._load_trace()
+
+        
 
     #-------------------------------------------------------------------------
     # Properties
@@ -465,6 +473,8 @@ class TraceFile(object):
         SELECTED RAW TEXT TRACE IF IT FINDS ONE AVAILABLE!!!
         """
 
+        '''Remove packed trace support for now
+        
         # the user probably selected a '.tt' trace
         if zipfile.is_zipfile(self.filepath):
             self._load_packed_trace(self.filepath)
@@ -487,7 +497,7 @@ class TraceFile(object):
             if packed_crc == text_crc:
                 self._load_packed_trace(self.packed_filepath)
                 return
-
+        '''
         #
         # no luck loading / side-loading packed traces, so simply try to
         # load the user selected trace as a normal text Tenet trace
@@ -512,6 +522,10 @@ class TraceFile(object):
         """
         if ArchAMD64.MAGIC == magic:
             self.arch = ArchAMD64()
+        elif ArchARM.MAGIC == magic:
+            self.arch = ArchARM()
+        elif ArchARM64.MAGIC == magic:
+            self.arch = ArchARM64()
         else:
             self.arch = ArchX86()
 
@@ -609,6 +623,13 @@ class TraceFile(object):
         # load / parse a text trace into trace segments
         with open(filepath, 'r') as f:
 
+            firstline = f.readline()
+            firstline = firstline.split('=')
+            if len(firstline) == 2 and firstline[0] == 'slide':
+                self.slide = int(firstline[1], 16)
+            else:
+                f.seek(0)
+
             # loop until all of the lines in the file have been processed
             while True:
 
@@ -630,7 +651,8 @@ class TraceFile(object):
                 #break # for debugging...
 
         self._finalize()
-        self._save()
+
+        # self._save() # Remove packed trace support for now
 
     def get_ip(self, idx):
         """
@@ -852,6 +874,141 @@ class TraceFile(object):
         output.append(f" ---- {self.num_bytes_read_info / (1024*1024):0.2f}mb ({(self.num_bytes_read_info / self.raw_size) * 100 :3.2f}%) - read pointers")
         output.append(f" ---- {self.num_bytes_written_info / (1024*1024):0.2f}mb ({(self.num_bytes_written_info / self.raw_size) * 100 :3.2f}%) - write pointers")
         print(''.join(output))
+
+
+
+
+max_int = 2**80
+
+class Interval(object):
+    def __init__(self, bounds):
+        self.bounds = bounds
+        self.bitmap = [[] for i in range(bounds[1]-bounds[0])]
+
+class SearchableMemory(object):
+
+    def __init__(self):
+        self.data = []
+        self.intervals = []
+        self.finalized = False
+
+    def record_data_for_search(self, idx, addr, data):
+        self.data.append((idx, addr, data))
+
+    def intesect_intervals(self, arr1, arr2):
+        i = j = 0
+
+        n = len(arr1)
+        m = len(arr2)
+        ret = []
+    
+        # Loop through all intervals unless one 
+        # of the interval gets exhausted
+        while i < n and j < m:
+            
+            # Left bound for intersecting segment
+            l = max(arr1[i][0], arr2[j][0])
+            
+            # Right bound for intersecting segment
+            r = min(arr1[i][1], arr2[j][1])
+            
+            # If segment is valid print it
+            if l < r: 
+                ret.append([l,r])
+    
+            # If i-th interval's right bound is 
+            # smaller increment i else increment j
+            if arr1[i][1] < arr2[j][1]:
+                i += 1
+            else:
+                j += 1
+        return ret
+
+    def merge_intervals(self, temp_intervals):
+        result = []
+        if len(temp_intervals) > 0:
+
+            temp_intervals.sort(key=lambda x:x[0])
+            result = [list(temp_intervals[0])]
+            for interval in temp_intervals[1:]:
+                interval = list(interval)
+                if interval[0] <= result[-1][1]:
+                    result[-1][1] = max(result[-1][1], interval[1])
+                else:
+                    result.append(interval)
+        return result
+
+        
+    def process_data(self):
+        for (idx, addr, dat) in self.data:
+            interval = self.addr_to_interval(addr)
+            rel_addr = addr - interval.bounds[0]
+            assert addr>=0
+            
+            for i,e in enumerate(dat):
+
+                offset = rel_addr+i
+                if len(interval.bitmap[offset]):
+                    if interval.bitmap[offset][-1][1] == e: #skip if same data
+                        continue
+                    interval.bitmap[offset][-1][0][1]=idx
+                    if interval.bitmap[offset][-1][0][0] == idx: #never actually lived during one full step, delete
+                        interval.bitmap[offset].pop()
+
+                interval.bitmap[offset].append(([idx,max_int],e)) #start_idx, end_idx, value
+
+    
+    def finalize(self):
+        self.finalized = True
+
+        temp_intervals = []
+        for d in self.data:
+            temp_intervals.append((d[1],d[1]+len(d[2])))
+
+        result = self.merge_intervals(temp_intervals)
+        for inte in result:
+            self.intervals.append(Interval(inte))
+
+        self.process_data()
+        del self.data
+
+          
+    def search(self, pattern):
+        results = []
+        for inte in self.intervals:
+            data_ptr = 0
+            pattern_ptr = 0
+            for data_ptr in range(len(inte.bitmap)-len(pattern)+1):
+                
+                candidate_intervals = [[0,max_int]]
+                for i, char in enumerate(pattern):
+                    if char==-1:
+                        continue
+                    next_candidate_intervals = []
+                    for e in inte.bitmap[data_ptr+i]:
+                        if e[1] == char:
+                            intersect_inter = self.intesect_intervals([e[0]], candidate_intervals)
+                            if len(intersect_inter)>0:
+                                next_candidate_intervals.extend(intersect_inter)
+
+                    next_candidate_intervals = self.merge_intervals(next_candidate_intervals)
+
+                    if not next_candidate_intervals:break
+                    candidate_intervals = next_candidate_intervals
+                    if i==len(pattern)-1:
+                        results.append((candidate_intervals[0][0], data_ptr+inte.bounds[0]))
+                        if len(results)>=1000:
+                            return results
+        return results
+
+    def get_strings(self, str):
+        pass
+        
+    def addr_to_interval(self, addr):
+        idx = bisect.bisect_left(self.intervals, addr, key = lambda x:x.bounds[1])
+        return self.intervals[idx]
+
+
     
 class TraceSegment(object):
     """
@@ -1216,12 +1373,15 @@ class TraceSegment(object):
 
         byte, i = 0, 0
 
+        real_mask = masks[mem_id]
         while data_mask:
             if data_mask & 1:
                 output.data[i] = raw_data[byte]
                 output.mask[i] = 0xFF
+            if real_mask & 1:
                 byte += 1
             i += 1
+            real_mask >>= 1
             data_mask >>= 1
 
         #assert byte == length
@@ -1510,6 +1670,7 @@ class TraceSegment(object):
         # TODO: pretty gross, but let's just wrap it to make these issues more apparents
         except Exception as e:
             pmsg(f"LINE PARSE FAILED, line ~{self.base_idx+relative_idx:,}, contents '{line}'")
+            pmsg(str(REGISTERS))
             pmsg(str(e))
 
         self.reg_data = bytearray(self.reg_data[:self._reg_offset])
@@ -1556,9 +1717,11 @@ class TraceSegment(object):
                 hex_data = bytes(hex_data.strip(), 'utf-8')
                 data = binascii.unhexlify(hex_data)
 
+                self.trace.searchable_memory.record_data_for_search(relative_idx+self.base_idx, address, data)
                 self._process_mem_entry(address, data, name, relative_idx)
 
             else:
+                print(name)
                 raise ValueError(f"Invalid line in text trace! '{line}' error on '{name}', (value '{value}')")
         
         self._pack_registers(registers, relative_idx)

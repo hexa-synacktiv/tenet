@@ -953,7 +953,7 @@ class TraceBar(QtWidgets.QWidget):
                 painter.setBrush(self.pctx.palette.trace_unmapped)
 
             y = self._idx2pos(idx)
-            painter.drawRect(x, y, w, h)
+            painter.drawRect(int(x), int(y), int(w), int(h))
 
     def _draw_highlights(self):
         """
@@ -1008,7 +1008,7 @@ class TraceBar(QtWidgets.QWidget):
                 y = self._idx2pos(idx) + self._cell_border
 
                 # draw cell body
-                painter.drawRect(viz_x, y, viz_w, h)
+                painter.drawRect(int(viz_x), int(y), int(viz_w), int(h))
 
     def _draw_highlights_trace(self, painter):
         """
@@ -1090,13 +1090,13 @@ class TraceBar(QtWidgets.QWidget):
             self._painter_cursor.setBrush(self.pctx.palette.trace_cursor_highlight)
 
             if draw_reader_cursor:
-                self._painter_cursor.drawRect(viz_x, cell_y, viz_w, cell_body_height)
+                self._painter_cursor.drawRect(int(viz_x), int(cell_y), int(viz_w), int(cell_body_height))
 
             # cursor hover highlighting an event
             if self._hovered_idx != INVALID_IDX:
                 hovered_y = self._idx2pos(self._hovered_idx)
                 hovered_cell_y = hovered_y + self._cell_border
-                self._painter_cursor.drawRect(viz_x, hovered_cell_y, viz_w, cell_body_height)
+                self._painter_cursor.drawRect(int(viz_x), int(hovered_cell_y), int(viz_w), int(cell_body_height))
 
         # draw the user cursor in dense/landscape mode
         else:
@@ -1104,12 +1104,12 @@ class TraceBar(QtWidgets.QWidget):
 
             # normal fixed / current reader cursor
             if draw_reader_cursor:
-                self._painter_cursor.drawLine(viz_x, cursor_y, viz_w, cursor_y)
+                self._painter_cursor.drawLine(int(viz_x), int(cursor_y), int(viz_w), int(cursor_y))
 
             # cursor hover highlighting an event
             if self._hovered_idx != INVALID_IDX:
                 hovered_y = self._idx2pos(self._hovered_idx)
-                self._painter_cursor.drawLine(viz_x, hovered_y, viz_w, hovered_y)
+                self._painter_cursor.drawLine(int(viz_x), int(hovered_y), int(viz_w), int(hovered_y))
 
         if not draw_reader_cursor:
             return
@@ -1172,7 +1172,7 @@ class TraceBar(QtWidgets.QWidget):
         h = end_y - start_y
 
         # draw the screen door / selection rect
-        self._painter_selection.drawRect(x, y, w, h)
+        self._painter_selection.drawRect(int(x), int(y), int(w), int(h))
 
     def _draw_border(self):
         """
@@ -1200,7 +1200,7 @@ class TraceBar(QtWidgets.QWidget):
         h = wid_h - self._trace_border
 
         # draw the border around the tracebar using a blank rect + stroke (border)
-        self._painter_border.drawRect(0, 0, w, h)
+        self._painter_border.drawRect(0, 0, int(w), int(h))
 
     #----------------------------------------------------------------------
     # Callbacks

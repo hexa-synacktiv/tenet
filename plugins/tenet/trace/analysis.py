@@ -1,6 +1,6 @@
 import bisect
 import collections
-
+import idaapi
 from tenet.util.log import pmsg
 
 #-----------------------------------------------------------------------------
@@ -79,6 +79,8 @@ class TraceAnalysis(object):
         # get *all* of the instruction addresses from disassembler
         instruction_addresses = dctx.get_instruction_addresses()
 
+        if len(instruction_addresses) == 0:return
+
         #
         # bucket the instruction addresses from the disassembler
         # based on non-aslr'd bits (lower 12 bits, 0xFFF)
@@ -127,65 +129,69 @@ class TraceAnalysis(object):
         # convert to set for O(1) lookup in following loop
         instruction_addresses = set(instruction_addresses)
 
-        #
-        # loop through all the slide buckets, from the most frequent distance
-        # (ASLR slide) to least frequent. the goal now is to sanity check the
-        # ranges to find one that seems to couple tightly with the disassembler
-        #
-
-        for k in sorted(slide_buckets, key=lambda k: len(slide_buckets[k]), reverse=True):
-            expected = len(slide_buckets[k])
-
-            #
-            # TODO: uh, if it's getting this small, I don't feel comfortable
-            # selecting an ASLR slide. the user might be loading a tiny trace
-            # with literally 'less than 10' unique instructions (?) that
-            # would map to the database
-            #
-
-            if expected < 10:
-                continue
-
-            hit, seen = 0, 0
-            for address in trace_addresses:
-
-                # add the ASLR slide for this bucket to a traced address
-                rebased_address = address + k
-
-                # the rebased address seems like it falls within the disassembler ranges
-                if disas_low_address <= rebased_address < disas_high_address:
-                    seen += 1
-
-                    # but does the address *actually* exist in the disassembler?
-                    if rebased_address in instruction_addresses:
-                        hit += 1
-
-            #
-            # the first *high* hit ratio is almost certainly the correct
-            # ASLR, practically speaking this should probably be 1.00, but
-            # I lowered it a bit to give a bit of flexibility.
-            #
-            # NOTE/TODO: a lower 'hit' ratio *could* occur if a lot of
-            # undefined instruction addresses in the disassembler get
-            # executed in the trace. this could be packed code / malware,
-            # in which case we will have to perform more aggressive analysis
-            #
-
-            if (hit / seen) > 0.95:
-                #print(f"ASLR Slide: {k:08X} Quality: {hit/seen:0.2f} (h {hit} s {seen} e {expected})")
-                slide = k
-                break
-
-        #
-        # if we do not break from the loop, we failed to find an adequate
-        # slide, which is very bad.
-        #
-        # NOTE/TODO: uh what do we do if we fail the ASLR slide?
-        #
-
+        if self._trace.slide is not None:
+            slide = self._trace.slide-idaapi.get_imagebase()
+            print(f"ASLR Slide: {slide:#x} from trace")
         else:
-            self.slide = None
-            return False
+            #
+            # loop through all the slide buckets, from the most frequent distance
+            # (ASLR slide) to least frequent. the goal now is to sanity check the
+            # ranges to find one that seems to couple tightly with the disassembler
+            #
+
+            for k in sorted(slide_buckets, key=lambda k: len(slide_buckets[k]), reverse=True):
+                expected = len(slide_buckets[k])
+
+                #
+                # TODO: uh, if it's getting this small, I don't feel comfortable
+                # selecting an ASLR slide. the user might be loading a tiny trace
+                # with literally 'less than 10' unique instructions (?) that
+                # would map to the database
+                #
+
+                if expected < 10:
+                    continue
+
+                hit, seen = 0, 0
+                for address in trace_addresses:
+
+                    # add the ASLR slide for this bucket to a traced address
+                    rebased_address = address + k
+
+                    # the rebased address seems like it falls within the disassembler ranges
+                    if disas_low_address <= rebased_address < disas_high_address:
+                        seen += 1
+
+                        # but does the address *actually* exist in the disassembler?
+                        if rebased_address in instruction_addresses:
+                            hit += 1
+
+                #
+                # the first *high* hit ratio is almost certainly the correct
+                # ASLR, practically speaking this should probably be 1.00, but
+                # I lowered it a bit to give a bit of flexibility.
+                #
+                # NOTE/TODO: a lower 'hit' ratio *could* occur if a lot of
+                # undefined instruction addresses in the disassembler get
+                # executed in the trace. this could be packed code / malware,
+                # in which case we will have to perform more aggressive analysis
+                #
+
+                if (hit / seen) > 0.95:
+                    print(f"ASLR Slide: {k:08X} Quality: {hit/seen:0.2f} (h {hit} s {seen} e {expected})")
+                    slide = k
+                    break
+
+            #
+            # if we do not break from the loop, we failed to find an adequate
+            # slide, which is very bad.
+            #
+            # NOTE/TODO: uh what do we do if we fail the ASLR slide?
+            #
+
+            else:
+                self.slide = None
+                return False
 
         #
         # TODO: err, lol this is all kind of dirty. should probably refactor

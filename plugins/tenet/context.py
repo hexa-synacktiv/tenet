@@ -11,14 +11,15 @@ from tenet.memory import MemoryController
 from tenet.registers import RegisterController
 from tenet.breakpoints import BreakpointController
 from tenet.ui.trace_view import TraceDock
+from tenet.ui.tree_view import TreeDock
 
 from tenet.types import BreakpointType
-from tenet.trace.arch import ArchAMD64, ArchX86
+from tenet.trace.arch import ArchAMD64, ArchX86, ArchARM, ArchARM64
 from tenet.trace.reader import TraceReader
 from tenet.integration.api import disassembler, DisassemblerContextAPI
 
 logger = logging.getLogger("Tenet.Context")
-
+NMEM = 4
 #------------------------------------------------------------------------------
 # context.py -- Plugin Database Context
 #------------------------------------------------------------------------------
@@ -40,6 +41,8 @@ logger = logging.getLogger("Tenet.Context")
 #    not change how this context system works under the hood.
 #
 
+import idaapi
+
 class TenetContext(object):
     """
     A per-database encapsulation of the plugin components / state.
@@ -51,10 +54,19 @@ class TenetContext(object):
         self.db = db
 
         # select a trace arch based on the binary the disassmbler has loaded
-        if disassembler[self].is_64bit():
+
+        
+        if idaapi.get_inf_structure().procname == "ARM":
+            if disassembler[self].is_64bit():
+                self.arch = ArchARM64()
+            else:
+                self.arch = ArchARM()
+        elif disassembler[self].is_64bit():
             self.arch = ArchAMD64()
         else:
             self.arch = ArchX86()
+
+        #pmsg("ARCH IS "+str(self.arch))
         
         # this will hold the trace reader when a trace has been loaded
         self.reader = None
@@ -62,8 +74,9 @@ class TenetContext(object):
         # plugin widgets / components
         self.breakpoints = BreakpointController(self)
         self.trace = TraceDock(self)  # TODO: port this one to MVC pattern
+        self.tree = TreeDock(self)  # TODO: port this one to MVC pattern
         self.stack = StackController(self)
-        self.memory = MemoryController(self)
+        self.memories = [MemoryController(self, i+1) for i in range(NMEM)]
         self.registers = RegisterController(self)
 
         # the directory to start the 'load trace file' dialog in
@@ -160,7 +173,7 @@ class TenetContext(object):
         pmsg(f"- {self.reader.trace.length:,} instructions...")
 
         if self.reader.analysis.slide != None:
-            pmsg(f"- {self.reader.analysis.slide:08X} ASLR slide...")
+            pmsg(f"- {self.reader.analysis.slide:#x} ASLR slide...")
         else:
             disassembler.warning("Failed to automatically detect ASLR base!\n\nSee console for more info...")
             pmsg(" +------------------------------------------------------")
@@ -187,8 +200,10 @@ class TenetContext(object):
 
         self.breakpoints.reset()
         self.trace.attach_reader(self.reader)
+        self.tree.attach_reader(self.reader)
         self.stack.attach_reader(self.reader)
-        self.memory.attach_reader(self.reader)
+        for i in range(NMEM):
+            self.memories[i].attach_reader(self.reader)
         self.registers.attach_reader(self.reader)
 
         #
@@ -217,10 +232,13 @@ class TenetContext(object):
 
         self.trace.hide()
         self.trace.detach_reader()
+        self.tree.hide()
+        self.tree.detach_reader()
         self.stack.hide()
         self.stack.detach_reader()
-        self.memory.hide()
-        self.memory.detach_reader()
+        for i in range(NMEM):
+            self.memories[i].hide()
+            self.memories[i].detach_reader()
         self.registers.hide()
         self.registers.detach_reader()
 
@@ -240,7 +258,7 @@ class TenetContext(object):
         """
         import ida_kernwin
         self.registers.show(position=ida_kernwin.DP_RIGHT)
-
+        self.tree.show("CPU Registers", ida_kernwin.DP_BOTTOM)
         #self.breakpoints.dockable.set_dock_position("CPU Registers", ida_kernwin.DP_BOTTOM)
         #self.breakpoints.dockable.show()
 
@@ -249,17 +267,20 @@ class TenetContext(object):
         #ida_kernwin.set_dock_pos("IPython Console", "Output", ida_kernwin.DP_INSIDE)
 
         #self.memory.dockable.set_dock_position("Output window", ida_kernwin.DP_TAB | ida_kernwin.DP_BEFORE)
-        self.memory.show("Output window", ida_kernwin.DP_TAB | ida_kernwin.DP_BEFORE)
-
+        
+        self.memories[0].show("Output window", ida_kernwin.DP_TAB | ida_kernwin.DP_BEFORE)
+        self.stack.show("Memory View 1", ida_kernwin.DP_RIGHT)
+        for i in range(1,NMEM):
+            self.memories[i].show("Memory View "+str(i), ida_kernwin.DP_TAB)
         #self.stack.dockable.set_dock_position("Memory View", ida_kernwin.DP_RIGHT)
-        self.stack.show("Memory View", ida_kernwin.DP_RIGHT)
+        
 
         mw = get_qmainwindow()
         mw.addToolBar(QtCore.Qt.RightToolBarArea, self.trace)
         self.trace.show()
 
         # trigger update check
-        self.core.check_for_update()
+        # self.core.check_for_update()
     
     #-------------------------------------------------------------------------
     # Integrated UI Event Handlers
