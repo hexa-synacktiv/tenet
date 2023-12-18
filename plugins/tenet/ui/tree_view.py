@@ -95,7 +95,6 @@ class CallTreeView(QWidget):
         if not p:return
         new_item = QStandardItem(p[0][0])
         new_item.idx = p[0][1]
-        new_item.depth = depth
         new_item.visible = True
         r,g,b = self.depth_color(depth)
         new_item.setBackground(QBrush(QColor(r,g,b)))
@@ -120,19 +119,11 @@ class CallTreeView(QWidget):
         if callgraph:
             for e in callgraph:
                 self.recurparse(root, e)
-        current_stack = [self.all_items[0]]
-        current_item
+        current = self.all_items[0]
         for i in range(len(self.all_items)):
-            item = self.all_items[i]
-            
-            if item:
-                if item.depth > current_item.depth:
-                    current_stack.append(current_item)
-                current_item = item
-                while item.depth < current_item.depth:
-                    current_item = current_stack.pop()
-            else:
-                self.all_items[i] = current_item
+            if self.all_items[i]:
+                current = self.all_items[i]
+            else: self.all_items[i] = current
     
     def scrolld(self, idx):
         self.tree.setCurrentIndex(self.all_items[idx].index())
@@ -260,9 +251,7 @@ class TreeDock():
             if start_i==reader.trace.length-1:break
 
         func_addr = idc.get_func_attr(start, idc.FUNCATTR_START)
-        badstart = 0
         if func_addr and func_addr != start:
-            badstart = start
             nam = self.get_func_name(func_addr)
             if nam and nam != -1:
                 callgraph_current[1].append(((nam,0),[],callgraph_current))
@@ -293,6 +282,7 @@ class TreeDock():
                 callgraph_current = callgraph_current[1][-1]
                 backtrace.append(nam)
             elif not self.get_func_name(npc) or abs(idc.next_head(pc)-npc)<2 or recurinside(pc):
+            #else:
                 ival = funcs_ival[backtrace[-1]]
                 while not inside:
                     if len(backtrace)==1:break
@@ -303,12 +293,6 @@ class TreeDock():
                     except:
                         print("Error in Tree View at "+str(i))
                     inside = ival[0] <= pc < ival[1]
-
-                if badstart and pc == badstart and len(backtrace) == 2:
-                    nam = self.get_func_name(func_addr)
-                    if nam and nam != -1:
-                        callgraph[1].append(((nam,0),[],callgraph_current))
-                        callgraph_current = callgraph[1][-1]
 
         self.callgraph = callgraph[1]
 
