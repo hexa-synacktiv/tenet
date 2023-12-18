@@ -13,11 +13,12 @@ The new features include :
 * **arm64**/**arm** support (did not requires much work as Tenet is architecture-agnostic)
 * Minor fixes and miscellaneous small design modifications
 
-More information about them is available at TODO_BLOGPOST_URL.
+More information about them is available on the 
+[Synacktiv blogpost](https://www.synacktiv.com/publications/frinet-reverse-engineering-made-easier).
 
 Screenshot of the new features (**Call tree view** & **Seach bytes** are visible) :
 
-TODO_SCREENSHOT
+![Screenshot of new features](https://raw.githubusercontent.com/synacktiv/frinet/main/screenshots/frinet.png)
 
 The original README.md content is left unmodified below.
 
