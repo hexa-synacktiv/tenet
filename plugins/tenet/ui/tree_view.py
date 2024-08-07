@@ -126,7 +126,7 @@ class CallTreeView(QWidget):
             else: self.all_items[i] = current
     
     def scrolld(self, idx):
-        if idx < len(self.all_items):
+        if self.all_items[idx]:
             self.tree.setCurrentIndex(self.all_items[idx].index())
             self.tree.scrollTo(self.tree.currentIndex(), QTreeView.PositionAtCenter)
             self.tree.horizontalScrollBar().setValue(0)
