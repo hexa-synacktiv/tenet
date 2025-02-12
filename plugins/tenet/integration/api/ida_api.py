@@ -18,7 +18,8 @@ import ida_name
 import ida_xref
 import idautils
 import ida_bytes
-import ida_idaapi
+# import ida_idaapi # for 8.+
+import ida_ida   # for 9.+
 import ida_diskio
 import ida_kernwin
 import ida_segment
@@ -198,9 +199,12 @@ class IDAContextAPI(DisassemblerContextAPI):
         pass
 
     def is_64bit(self):
-        inf = ida_idaapi.get_inf_structure()
-        #target_filetype = inf.filetype
-        return inf.is_64bit()
+        #for 8.+
+        # inf = ida_idaapi.get_inf_structure()
+        # #target_filetype = inf.filetype
+        # return inf.is_64bit() 
+        return not ida_ida.inf_is_32bit_exactly()  # for 9.+
+
 
     def is_call_insn(self, address):
         insn = ida_ua.insn_t()
