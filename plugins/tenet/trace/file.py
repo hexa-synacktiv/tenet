@@ -1720,6 +1720,9 @@ class TraceSegment(object):
                 self.trace.searchable_memory.record_data_for_search(relative_idx+self.base_idx, address, data)
                 self._process_mem_entry(address, data, name, relative_idx)
 
+            elif name == "X29" and "FP" in REGISTERS:
+                registers["FP"] = int(value, 16)
+                
             else:
                 print(name)
                 raise ValueError(f"Invalid line in text trace! '{line}' error on '{name}', (value '{value}')")
