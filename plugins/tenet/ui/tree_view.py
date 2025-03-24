@@ -272,12 +272,24 @@ class TreeDock():
                     return True
             return False
 
+        last_was_ret = False
         for i in range(start_i, reader.trace.length-1):
             pc = reader.get_ip(i)-aslr
             npc = reader.get_ip(i+1)-aslr
 
             ival = funcs_ival[backtrace[-1]]
             inside = ival[0] <= pc < ival[1]
+
+            if last_was_ret:
+                inside = False
+                
+            cur_insn = idc.print_insn_mnem(pc) 
+            if cur_insn == "ret" or cur_insn == "retn":
+                last_was_ret = True
+            else:
+                last_was_ret = False
+
+
             if (not pc in funcs_start or not funcs_start[pc]) and inside:
                 continue
             gfn = self.get_func_name(pc)
@@ -288,8 +300,7 @@ class TreeDock():
                 callgraph_current[1].append(((nam,i),[],callgraph_current))
                 callgraph_current = callgraph_current[1][-1]
                 backtrace.append(nam)
-            elif not self.get_func_name(npc) or abs(idc.next_head(pc)-npc)<2 or recurinside(pc):
-            #else:
+            elif (not self.get_func_name(npc) or abs(idc.next_head(pc)-npc)<2) and recurinside(pc):
                 ival = funcs_ival[backtrace[-1]]
                 while not inside:
                     if len(backtrace)==1:break
