@@ -58,7 +58,7 @@ class MyTreeView(QTreeView):
 
 
 class CallTreeView(QWidget):
-    def __init__(self, callgraph, reader, parent):
+    def __init__(self, parent):
         super(CallTreeView, self).__init__()
         self.tree = MyTreeView(self)
         self.tree.setIndentation(10)
@@ -66,9 +66,12 @@ class CallTreeView(QWidget):
         
         layout = QVBoxLayout(self)
         layout.addWidget(self.tree)
+        
+    def late_init(self, callgraph, reader):
+        self.dark_theme = self.palette().color(self.window().backgroundRole()).blue() < 0x80
         self.reset_callgraph(callgraph, reader)
         self.init_ctx_menu()
-        self.dark_theme = self.palette().color(self.window().backgroundRole()).blue() < 0x80
+        
     
     def reset_callgraph(self, callgraph, reader):
         self.all_items = [None for i in range(reader.trace.length)]
@@ -333,7 +336,7 @@ class TreeDock():
         # anything that once was
         #
 
-        self.view = CallTreeView(self.callgraph, self.reader, self)
+        self.view = CallTreeView(self)
         new_dockable = DockableWindow("Call tree view", self.view)
 
         #
@@ -350,6 +353,8 @@ class TreeDock():
         # make the dockable/widget visible
         self.dockable = new_dockable
         self.dockable.show()
+
+        self.view.late_init(self.callgraph, self.reader)
 
     def hide(self):
         """
