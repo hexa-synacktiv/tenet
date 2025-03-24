@@ -68,6 +68,7 @@ class CallTreeView(QWidget):
         layout.addWidget(self.tree)
         self.reset_callgraph(callgraph, reader)
         self.init_ctx_menu()
+        self.dark_theme = self.palette().color(self.window().backgroundRole()).blue() < 0x80
     
     def reset_callgraph(self, callgraph, reader):
         self.all_items = [None for i in range(reader.trace.length)]
@@ -86,9 +87,14 @@ class CallTreeView(QWidget):
         reader.idx_changed(self.scrolld)
 
     def depth_color(self,depth):
-        r=255-14*abs(depth%12-6)
-        g=255-14*abs((depth+4)%12-6)
-        b=255-14*abs((depth+8)%12-6)
+        if self.dark_theme:
+            r=80-10*abs(depth%12-6)
+            g=80-10*abs((depth+4)%12-6)
+            b=80-10*abs((depth+8)%12-6)
+        else:
+            r=255-14*abs(depth%12-6)
+            g=255-14*abs((depth+4)%12-6)
+            b=255-14*abs((depth+8)%12-6)
         return r,g,b
         
     def recurparse(self, item, p, depth=0):
