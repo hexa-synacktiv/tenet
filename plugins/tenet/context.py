@@ -41,8 +41,8 @@ NMEM = 4
 #    not change how this context system works under the hood.
 #
 
-#import idaapi  #for 8.+
-import ida_ida #for 9.+
+import idaapi  # for 8.+
+import ida_ida # for 9.+
 
 class TenetContext(object):
     """
@@ -56,9 +56,14 @@ class TenetContext(object):
 
         # select a trace arch based on the binary the disassmbler has loaded
 
+        # for 8.+
+        try:
+            proc_name = idaapi.get_inf_structure().procname
+        # for 9.+
+        except AttributeError:
+            proc_name = ida_ida.inf_get_procname()
         
-        # if idaapi.get_inf_structure().procname == "ARM":  #for 8.+
-        if ida_ida.inf_get_procname() == "ARM":     #for 9.+
+        if proc_name == "ARM":
             if disassembler[self].is_64bit():
                 self.arch = ArchARM64()
             else:
