@@ -545,7 +545,7 @@ class PluginPalette(object):
         if disassembler.NAME == "BINJA":
             test_widget.setAttribute(QtCore.Qt.WA_DontShowOnScreen)
         else:
-            test_widget.setAttribute(103) # taken from http://doc.qt.io/qt-5/qt.html
+            test_widget.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground) # taken from http://doc.qt.io/qt-5/qt.html
 
         # render the (invisible) widget
         test_widget.show()
