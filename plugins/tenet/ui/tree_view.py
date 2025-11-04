@@ -4,6 +4,7 @@ import idc
 import re
 import sys
 import ida_kernwin
+import ida_funcs
 
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -212,8 +213,6 @@ class TreeDock():
                 if nam:
                     nam = nam.split("(")[0]
                     nam.rstrip("<")
-                    suffix = 2
-                    bnam = nam
                     if not nam in self.funcs_idx:
                         self.funcs_idx[nam] = 1
                     else:
@@ -286,7 +285,7 @@ class TreeDock():
             if last_was_ret:
                 inside = False
                 
-            cur_insn = idc.print_insn_mnem(pc) 
+            cur_insn = idc.print_insn_mnem(pc).lower()
             if cur_insn == "ret" or cur_insn == "retn":
                 last_was_ret = True
             else:

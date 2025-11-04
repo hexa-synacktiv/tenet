@@ -3,6 +3,11 @@ import time
 
 from .shim import *
 
+try:
+    from PySide6.QtGui import QClipboard
+except ImportError:
+    from PyQt5.QtGui import QClipboard
+
 #------------------------------------------------------------------------------
 # Qt Fonts
 #------------------------------------------------------------------------------
@@ -24,8 +29,8 @@ def copy_to_clipboard(data):
     Copy the given data (a string) to the system clipboard.
     """
     cb = QtWidgets.QApplication.clipboard()
-    cb.clear(mode=cb.Clipboard)
-    cb.setText(data, mode=cb.Clipboard)
+    cb.clear(mode=QClipboard.Clipboard)
+    cb.setText(data, mode=QClipboard.Clipboard)
 
 def flush_qt_events():
     """

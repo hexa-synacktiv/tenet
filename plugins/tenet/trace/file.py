@@ -885,6 +885,9 @@ class Interval(object):
         self.bounds = bounds
         self.bitmap = [[] for i in range(bounds[1]-bounds[0])]
 
+def is_ascii(chr):
+    return (chr >= 32 and chr < 0x7f) or chr == 0x0a or chr == 0x0d
+
 class SearchableMemory(object):
 
     def __init__(self):
@@ -973,20 +976,24 @@ class SearchableMemory(object):
         del self.data
 
           
-    def search(self, pattern):
+    def search(self, pattern_arg):
         results = []
         for inte in self.intervals:
             data_ptr = 0
-            pattern_ptr = 0
-            for data_ptr in range(len(inte.bitmap)-len(pattern)+1):
+            for data_ptr in range(len(inte.bitmap)-len(pattern_arg)+1):
                 
+                pattern = pattern_arg
+                if data_ptr == 0:
+                    while pattern[0] == -3:
+                        pattern = pattern[1:]
+                    
                 candidate_intervals = [[0,max_int]]
                 for i, char in enumerate(pattern):
                     if char==-1:
                         continue
                     next_candidate_intervals = []
                     for e in inte.bitmap[data_ptr+i]:
-                        if e[1] == char:
+                        if e[1] == char or (char == -2 and is_ascii(e[1])) or (char == -3 and not is_ascii(e[1])):
                             intersect_inter = self.intesect_intervals([e[0]], candidate_intervals)
                             if len(intersect_inter)>0:
                                 next_candidate_intervals.extend(intersect_inter)
@@ -996,8 +1003,9 @@ class SearchableMemory(object):
                     if not next_candidate_intervals:break
                     candidate_intervals = next_candidate_intervals
                     if i==len(pattern)-1:
-                        results.append((candidate_intervals[0][0], data_ptr+inte.bounds[0]))
-                        if len(results)>=1000:
+                        for c in candidate_intervals:
+                            results.append((tuple(c), data_ptr+inte.bounds[0]))
+                        if len(results)>=10000:
                             return results
         return results
 
@@ -1713,7 +1721,7 @@ class TraceSegment(object):
             elif name in ["MR", "MW", "MRW"]:
 
                 address, hex_data = value.split(":")
-                address = int(address, 16)
+                address = int(address, 16) & 0x00ffffffffffffff
                 hex_data = bytes(hex_data.strip(), 'utf-8')
                 data = binascii.unhexlify(hex_data)
 

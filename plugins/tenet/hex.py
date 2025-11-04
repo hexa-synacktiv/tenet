@@ -116,6 +116,7 @@ class HexController(object):
         """
         Navigate the hex view to a given address.
         """
+        address &= 0x00FFFFFFFFFFFFFF
         if address < 0:
             address = 0
 

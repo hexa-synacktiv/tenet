@@ -10,15 +10,38 @@ INVALID_ADDRESS = -1
 
 
 class SearchView(QtWidgets.QWidget):
-    def __init__(self, items, hexview, searchterm):
+    def __init__(self, items, hexview, reader, searchterm, stringsearch):
         super(SearchView, self).__init__()
         self.list = QtWidgets.QListWidget(self)
         self.hexview = hexview
         
         for item in items:
-            qitem = QtWidgets.QListWidgetItem(f"Position {item[0]} address {hex(item[1])}", self.list)
-            qitem.idx = item[0]
-            qitem.addr = item[1]
+            pos = item[0][0]
+            addr = item[1] + 1 if stringsearch else 0
+            
+            txt = f"Pos {pos} addr {hex(addr)}"
+
+            if stringsearch:
+                idx = pos
+                if idx<0:idx=0
+                if idx > reader.trace.length:
+                    idx = reader.trace.length - 1
+                memory = reader.get_memory(addr, 32, idx=idx)
+                stringval = ""
+                for i in range(32):
+
+                    if memory.mask[i] == 0xFF:
+                        char = memory.data[i]
+                        if char < 32 or char >= 0x7f:
+                            break
+                        stringval+=chr(char)
+                    else:
+                        break
+            if stringval:
+                txt +=" : "+stringval
+            qitem = QtWidgets.QListWidgetItem(txt, self.list)
+            qitem.idx = pos
+            qitem.addr = addr
             
         self.list.itemClicked.connect(self.on_item_clicked)
         self.list.setMinimumWidth(self.list.sizeHintForColumn(0)+ 50)
@@ -63,7 +86,7 @@ class HexView(QtWidgets.QAbstractScrollArea):
         self.setMouseTracking(True)
 
         fm = QtGui.QFontMetricsF(font)
-        self._char_width = fm.width('9')
+        self._char_width = fm.averageCharWidth()
         self._char_height = int(fm.tightBoundingRect('9').height() * 1.75)
         self._char_descent = self._char_height - fm.descent()*0.75
 
@@ -105,6 +128,7 @@ class HexView(QtWidgets.QAbstractScrollArea):
 
         self._action_addr = QtWidgets.QAction("Go to Address", None)
         self._action_search = QtWidgets.QAction("Search bytes", None)
+        self._action_search_strings = QtWidgets.QAction("Find all strings", None)
         self._action_search_selection = QtWidgets.QAction("Search selected bytes", None)
         self._action_clear = QtWidgets.QAction("Clear mem breakpoints", None)
         self._actions_follow_in_dump = []
@@ -122,12 +146,13 @@ class HexView(QtWidgets.QAbstractScrollArea):
         # break on action group
         #
 
-        self._action_break = {}
+        self._action_break = []
 
         for name, bp_type in bp_types:
             action = QtWidgets.QAction(name, None)
             action.setCheckable(True)
-            self._action_break[action] = bp_type
+            action.setData(bp_type)
+            self._action_break.append(action)
 
         self._break_menu = QtWidgets.QMenu("Break on...")
         self._break_menu.addActions(self._action_break)
@@ -136,16 +161,25 @@ class HexView(QtWidgets.QAbstractScrollArea):
         # goto action groups
         #
 
-        self._action_first = {}
-        self._action_prev = {}
-        self._action_next = {}
-        self._action_final = {}
+        self._action_first = []
+        self._action_prev = []
+        self._action_next = []
+        self._action_final = []
 
         for name, bp_type in bp_types:
-            self._action_prev[QtWidgets.QAction(name, None)] = bp_type
-            self._action_next[QtWidgets.QAction(name, None)] = bp_type
-            self._action_first[QtWidgets.QAction(name, None)] = bp_type
-            self._action_final[QtWidgets.QAction(name, None)] = bp_type
+            prev_act = QtWidgets.QAction(name, None)
+            prev_act.setData(bp_type)
+            self._action_prev.append(prev_act)
+            next_act = QtWidgets.QAction(name, None)
+            next_act.setData(bp_type)
+            self._action_next.append(next_act)
+            first_act = QtWidgets.QAction(name, None)
+            first_act.setData(bp_type)
+            self._action_first.append(first_act)
+            final_act = QtWidgets.QAction(name, None)
+            final_act.setData(bp_type)
+            self._action_final.append(final_act)
+
 
         self._goto_menus = \
         [
@@ -415,16 +449,33 @@ class HexView(QtWidgets.QAbstractScrollArea):
 
 
     def _search(self):
-        searchstring = ida_kernwin.ask_str("", 89456, "Search bytes (Ascii, \\xXX for raw bytes, ? for wildcard byte)")
+        searchstring = ida_kernwin.ask_str("", 89456, "Search bytes (Ascii, \\xXX for raw bytes, ? for wildcard byte, ~ for ASCII byte)")
+        if searchstring:
+            return self._search_internal(searchstring)
+        
+    def _search_strings(self):
+        val = ida_kernwin.ask_long(8, "Search all strings of specified minimum size")
+        if val > 1:
+            return self._search_internal("~"*val, stringsearch=True)
+
+    def _search_internal(self, searchstring, stringsearch=False):
         fake_pattern = re.sub(b"\\\\x([a-fA-F0-9]{2,2})", lambda m: b" ", searchstring.encode())
         wildcard_positions = [i for i,e in enumerate(fake_pattern) if e == ord("?")]
-
+        ascii_positions = [i for i,e in enumerate(fake_pattern) if e == ord("~")]
+        
         pattern = re.sub(b"\\\\x([a-fA-F0-9]{2,2})", lambda m: bytes.fromhex(m.group(1).decode()), searchstring.encode())
         pattern = list(pattern)
         for wildpos in wildcard_positions:
             pattern[wildpos] = -1
 
-        self.do_search(searchstring, pattern)
+        for asciipos in ascii_positions:
+            pattern[asciipos] = -2
+
+        if stringsearch:
+            pattern.insert(0, -3)
+
+        self.do_search(searchstring, pattern, stringsearch)
+
 
     def _search_from_selection(self):
         mem = self.controller.get_selection(self._selection_start, self._selection_end)
@@ -441,7 +492,7 @@ class HexView(QtWidgets.QAbstractScrollArea):
         print(pattern)
         self.do_search(mem, pattern)
 
-    def do_search(self, searchstring, pattern):
+    def do_search(self, searchstring, pattern, stringsearch=False):
         global searchview
 
         while pattern and pattern[-1]==-1:pattern.pop()
@@ -455,9 +506,9 @@ class HexView(QtWidgets.QAbstractScrollArea):
             self.controller.reader.trace.searchable_memory.finalize()
 
         search_results = self.controller.reader.trace.searchable_memory.search(pattern)
-        if len(search_results)>=1000:
-            ida_kernwin.warning("Search results capped to 1000")
-        searchview = SearchView(sorted(search_results), self, searchstring)
+        if len(search_results)>=10000:
+            ida_kernwin.warning("Search results capped to 10000")
+        searchview = SearchView(sorted(search_results), self, self.controller.reader, searchstring, stringsearch)
         searchview.show()
 
     #--------------------------------------------------------------------------
@@ -503,6 +554,7 @@ class HexView(QtWidgets.QAbstractScrollArea):
 
         # show the 'search bytes' action
         menu.addAction(self._action_search)
+        menu.addAction(self._action_search_strings)
 
         menu.addSeparator()
 
@@ -516,7 +568,8 @@ class HexView(QtWidgets.QAbstractScrollArea):
             menu.addMenu(self._break_menu)
             menu.addSeparator()
 
-        for action, access_type in self._action_break.items():
+        for action in self._action_break:
+            access_type = action.data()
             action.setChecked(ctx_type == access_type)
 
         # show the 'go to address' action
@@ -560,6 +613,10 @@ class HexView(QtWidgets.QAbstractScrollArea):
         
         elif action == self._action_search:
             self._search()
+            return
+
+        elif action == self._action_search_strings:
+            self._search_strings()
             return
 
         elif action == self._action_search_selection:
@@ -739,7 +796,8 @@ class HexView(QtWidgets.QAbstractScrollArea):
         #
 
         # compute the address of the hovered byte (if there is one...)
-        byte_address = self.point_to_address(event.pos())
+        byte_address = self.point_to_address(event.position().toPoint())
+        print(byte_address,event.position(),event.position().toPoint())
 
         for bp in self.model.memory_breakpoints:
 

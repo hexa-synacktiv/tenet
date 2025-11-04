@@ -97,7 +97,7 @@ class RegisterArea(QtWidgets.QAbstractScrollArea):
         self.setFont(font)
 
         fm = QtGui.QFontMetricsF(font)
-        self._char_width = fm.width('10')
+        self._char_width = fm.averageCharWidth()
         self._char_height = fm.height()
 
         # default to fit roughly 50 printable characters
