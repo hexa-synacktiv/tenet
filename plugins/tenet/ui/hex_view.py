@@ -797,7 +797,6 @@ class HexView(QtWidgets.QAbstractScrollArea):
 
         # compute the address of the hovered byte (if there is one...)
         byte_address = self.point_to_address(event.position().toPoint())
-        print(byte_address,event.position(),event.position().toPoint())
 
         for bp in self.model.memory_breakpoints:
 

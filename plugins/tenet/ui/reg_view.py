@@ -296,7 +296,7 @@ class RegisterArea(QtWidgets.QAbstractScrollArea):
             return
 
         # mouse hover was not over IP register value, nothing to do
-        field = self._pos_to_field(event.pos())
+        field = self._pos_to_field(event.position().toPoint())
         if not (field and field.name == self.model.arch.IP):
             return
 
