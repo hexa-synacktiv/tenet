@@ -17,7 +17,7 @@ class SearchView(QtWidgets.QWidget):
         
         for item in items:
             pos = item[0][0]
-            addr = item[1] + 1 if stringsearch else 0
+            addr = item[1] + 1 if stringsearch else item[1]
             
             txt = f"Pos {pos} addr {hex(addr)}"
 
@@ -37,8 +37,8 @@ class SearchView(QtWidgets.QWidget):
                         stringval+=chr(char)
                     else:
                         break
-            if stringval:
-                txt +=" : "+stringval
+                if stringval:
+                    txt +=" : "+stringval
             qitem = QtWidgets.QListWidgetItem(txt, self.list)
             qitem.idx = pos
             qitem.addr = addr
@@ -455,7 +455,7 @@ class HexView(QtWidgets.QAbstractScrollArea):
         
     def _search_strings(self):
         val = ida_kernwin.ask_long(8, "Search all strings of specified minimum size")
-        if val > 1:
+        if val and val > 1:
             return self._search_internal("~"*val, stringsearch=True)
 
     def _search_internal(self, searchstring, stringsearch=False):
