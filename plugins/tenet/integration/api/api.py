@@ -150,7 +150,7 @@ class DisassemblerCoreAPI(object):
         """
         msgbox = QtWidgets.QMessageBox()
         before = msgbox.sizeHint().width()
-        msgbox.setIcon(QtWidgets.QMessageBox.Critical)
+        msgbox.setIcon(QtWidgets.QMessageBox.Icon.Critical)
         after = msgbox.sizeHint().width()
         icon_width = after - before
 

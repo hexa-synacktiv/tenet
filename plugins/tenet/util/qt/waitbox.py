@@ -50,13 +50,13 @@ class WaitBox(QtWidgets.QDialog):
         Initialize UI elements.
         """
         self.setWindowFlags(
-            self.windowFlags() & ~QtCore.Qt.WindowContextHelpButtonHint
+            self.windowFlags() & ~QtCore.Qt.WindowType.WindowContextHelpButtonHint
         )
         self.setWindowFlags(
-            self.windowFlags() | QtCore.Qt.MSWindowsFixedSizeDialogHint
+            self.windowFlags() | QtCore.Qt.WindowType.MSWindowsFixedSizeDialogHint
         )
         self.setWindowFlags(
-            self.windowFlags() & ~QtCore.Qt.WindowCloseButtonHint
+            self.windowFlags() & ~QtCore.Qt.WindowType.WindowCloseButtonHint
         )
 
         # configure the main widget / form
@@ -76,11 +76,11 @@ class WaitBox(QtWidgets.QDialog):
         """
         self.setWindowTitle(self._title)
         self._text_label = QtWidgets.QLabel(self._text)
-        self._text_label.setAlignment(QtCore.Qt.AlignHCenter)
+        self._text_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignHCenter)
 
         # vertical layout (whole widget)
         v_layout = QtWidgets.QVBoxLayout()
-        v_layout.setAlignment(QtCore.Qt.AlignCenter)
+        v_layout.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         v_layout.addWidget(self._text_label)
         if self._abort:
             self._abort_button.clicked.connect(self._abort)

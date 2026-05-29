@@ -130,7 +130,7 @@ class PluginPalette(object):
             self._last_directory,
             "JSON Files (*.json)"
         )
-        file_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFile)
+        file_dialog.setFileMode(QtWidgets.QFileDialog.FileMode.ExistingFile)
 
         # prompt the user with the file dialog, and await filename(s)
         filename, _ = file_dialog.getOpenFileName()
@@ -210,19 +210,19 @@ class PluginPalette(object):
 
         p = QtGui.QPainter()
         p.begin(mask)
-        p.setCompositionMode(QtGui.QPainter.CompositionMode_SourceIn)
+        p.setCompositionMode(QtGui.QPainter.CompositionMode.CompositionMode_SourceIn)
         p.fillRect(img.rect(), color)
         p.end()
 
         p.begin(img)
-        p.setCompositionMode(QtGui.QPainter.CompositionMode_Overlay)
+        p.setCompositionMode(QtGui.QPainter.CompositionMode.CompositionMode_Overlay)
         p.drawPixmap(0, 0, mask)
         p.end()
 
         # convert QPixmap to bytes
         ba = QtCore.QByteArray()
         buff = QtCore.QBuffer(ba)
-        buff.open(QtCore.QIODevice.WriteOnly)
+        buff.open(QtCore.QIODevice.OpenModeFlag.WriteOnly)
         ok = img.save(buff, "PNG", quality=100)
         assert ok
 
@@ -542,13 +542,16 @@ class PluginPalette(object):
         #   lmao, don't ask me why they forgot about this attribute from 5.0 - 5.6
         #
 
-        test_widget.setAttribute(QtCore.Qt.WA_DontShowOnScreen)
+        if disassembler.NAME == "BINJA":
+            test_widget.setAttribute(QtCore.Qt.WidgetAttribute.WA_DontShowOnScreen)
+        else:
+            test_widget.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground) # taken from http://doc.qt.io/qt-5/qt.html
 
         # render the (invisible) widget
         test_widget.show()
 
         # now we farm the background color from the qwidget
-        bg_color = test_widget.palette().color(QtGui.QPalette.Window)
+        bg_color = test_widget.palette().color(QtGui.QPalette.ColorRole.Window)
 
         # 'hide' & delete the widget
         test_widget.hide()

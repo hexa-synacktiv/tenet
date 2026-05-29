@@ -11,7 +11,7 @@ class BreakpointDock(QtWidgets.QDockWidget):
     """
     def __init__(self, view, parent=None):
         super(BreakpointDock, self).__init__(parent)
-        self.setAllowedAreas(QtCore.Qt.AllDockWidgetAreas)
+        self.setAllowedAreas(QtCore.Qt.DockWidgetArea.AllDockWidgetAreas)
         self.setWindowTitle("Breakpoints")
         self.setWidget(view)
 

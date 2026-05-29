@@ -6,26 +6,67 @@ import sys
 import ida_kernwin
 import ida_funcs
 
-from PyQt5.QtWidgets import *
-from PyQt5.QtGui import *
-from PyQt5.QtCore import *
+from ..util.qt.shim import QtWidgets, QtGui, QtCore
+
+
+# -------------------------------------------------------------------------
+import __main__
+import shiboken6
+import ctypes
+
+# 1. Patchs de base pour le contexte global __main__
+if not hasattr(__main__, 'QtGui'):
+    __main__.QtGui = QtGui
+if not hasattr(__main__, 'QtWidgets'):
+    __main__.QtWidgets = QtWidgets
+if not hasattr(__main__, 'QtCore'):
+    __main__.QtCore = QtCore
+
+# 2. Patch pour le bug de QWidget déplacé de QtGui vers QtWidgets
+if not hasattr(QtGui, 'QWidget'):
+    QtGui.QWidget = QtWidgets.QWidget
+
+# --- 3. PATCH MIS À JOUR: Implémentation de FromCapsule avec PyCapsule ---
+if not hasattr(QtWidgets.QWidget, 'FromCapsule'):
+    @classmethod
+    def from_capsule(cls, capsule):
+        # Configuration des appels à l'API C de Python (CPython API)
+        ctypes.pythonapi.PyCapsule_GetName.restype = ctypes.c_char_p
+        ctypes.pythonapi.PyCapsule_GetName.argtypes = [ctypes.py_object]
+        
+        ctypes.pythonapi.PyCapsule_GetPointer.restype = ctypes.c_void_p
+        ctypes.pythonapi.PyCapsule_GetPointer.argtypes = [ctypes.py_object, ctypes.c_char_p]
+        
+        # Extraction du nom (tag) de la capsule, puis de son pointeur mémoire
+        capsule_name = ctypes.pythonapi.PyCapsule_GetName(capsule)
+        ptr = ctypes.pythonapi.PyCapsule_GetPointer(capsule, capsule_name)
+        
+        # Shiboken6 utilise maintenant la vraie adresse (entier)
+        return shiboken6.wrapInstance(ptr, cls)
+        
+    QtWidgets.QWidget.FromCapsule = from_capsule
+# -------------------------------------------------------------------------
+
+
+
 from tenet.util.qt import QT_AVAILABLE
 from tenet.integration.api import DockableWindow
+
 # TODO: clean :)
 sys.setrecursionlimit(100000)
 
-class MyTreeView(QTreeView):
+class MyTreeView(QtWidgets.QTreeView):
     def __init__(self, parent=None):
         super(MyTreeView, self).__init__(parent=parent)
         self.clicked.connect(self.on_clicked)
         self.reader = None
-        
+
     def set_reader(self, reader):
         self.reader = reader
-    
+
     def on_clicked(self, index):
         self.reader.seek(self.model().itemFromIndex(index).idx)
-    
+
     def filter(self, pattern, positive=True, clear=False):
         if clear:
             self.setStyleSheet("QTreeView{background-color:rgb(255,255,255)}")
@@ -57,27 +98,25 @@ class MyTreeView(QTreeView):
         for row in range(self.model().rowCount()):
             recurow(self.model().item(row),row)
 
-
-class CallTreeView(QWidget):
+class CallTreeView(QtWidgets.QWidget):
     def __init__(self, parent):
         super(CallTreeView, self).__init__()
         self.tree = MyTreeView(self)
         self.tree.setIndentation(10)
         self.parent = parent
-        
-        layout = QVBoxLayout(self)
+
+        layout = QtWidgets.QVBoxLayout(self)
         layout.addWidget(self.tree)
-        
+
     def late_init(self, callgraph, reader):
         self.dark_theme = self.palette().color(self.window().backgroundRole()).blue() < 0x80
         self.reset_callgraph(callgraph, reader)
         self.init_ctx_menu()
-        
-    
+
     def reset_callgraph(self, callgraph, reader):
         self.all_items = [None for i in range(reader.trace.length)]
-        
-        self.model = QStandardItemModel()
+
+        self.model = QtGui.QStandardItemModel()
         self.model.setHorizontalHeaderLabels(['Functions'])
         self.tree.set_reader(reader)
         self.tree.header().setDefaultSectionSize(180)
@@ -86,7 +125,7 @@ class CallTreeView(QWidget):
         self.importData(callgraph)
         self.tree.expandAll()
         header = self.tree.header()
-        header.setSectionResizeMode(QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(QtWidgets.QHeaderView.ResizeToContents)
         header.setStretchLastSection(False)
         reader.idx_changed(self.scrolld)
 
@@ -100,14 +139,14 @@ class CallTreeView(QWidget):
             g=255-14*abs((depth+4)%12-6)
             b=255-14*abs((depth+8)%12-6)
         return r,g,b
-        
+
     def recurparse(self, item, p, depth=0):
         if not p:return
-        new_item = QStandardItem(p[0][0])
+        new_item = QtGui.QStandardItem(p[0][0])
         new_item.idx = p[0][1]
         new_item.visible = True
         r,g,b = self.depth_color(depth)
-        new_item.setBackground(QBrush(QColor(r,g,b)))
+        new_item.setBackground(QtGui.QBrush(QtGui.QColor(r,g,b)))
 
         if len(p[1]):
             new_item.has_children = True
@@ -117,15 +156,15 @@ class CallTreeView(QWidget):
         self.all_items[new_item.idx] = new_item
         new_item.setEditable(False)
         item.appendRow([new_item])
-        
+
         for e in p[1]:
             self.recurparse(item.child(item.rowCount() - 1), e, depth+1)
-        
+
     def importData(self, callgraph, root=None):
         self.model.setRowCount(0)
         if root is None:
             root = self.model.invisibleRootItem()
-        
+
         if callgraph:
             for e in callgraph:
                 self.recurparse(root, e)
@@ -134,11 +173,11 @@ class CallTreeView(QWidget):
             if self.all_items[i]:
                 current = self.all_items[i]
             else: self.all_items[i] = current
-    
+
     def scrolld(self, idx):
         if self.all_items[idx]:
             self.tree.setCurrentIndex(self.all_items[idx].index())
-            self.tree.scrollTo(self.tree.currentIndex(), QTreeView.PositionAtCenter)
+            self.tree.scrollTo(self.tree.currentIndex(), QtWidgets.QTreeView.PositionAtCenter)
             self.tree.horizontalScrollBar().setValue(0)
 
     def action_filter(self):
@@ -151,12 +190,11 @@ class CallTreeView(QWidget):
                     st=st[1:]
                 self.tree.filter(st,positive)   
 
-    
     def init_ctx_menu(self):
         """
         Initialize the right click context menu actions.
         """
-        self.menu = QMenu()
+        self.menu = QtWidgets.QMenu()
 
         # create actions to show in the context menu
         self.action_collapse = self.menu.addAction("Collapse all but selection")
@@ -165,11 +203,9 @@ class CallTreeView(QWidget):
         self._action_filter = self.menu.addAction("Filter")
         self._action_clearfilter = self.menu.addAction("Clear filters")
 
-
         # install the right click context menu
-        self.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self.ctx_menu_handler)
-    
 
     def ctx_menu_handler(self, position):
         """
@@ -180,7 +216,7 @@ class CallTreeView(QWidget):
             self.tree.expandAll()
         elif action == self.action_collapse:
             self.tree.collapseAll()
-            self.tree.scrollTo(self.tree.currentIndex(), QTreeView.PositionAtCenter)
+            self.tree.scrollTo(self.tree.currentIndex(), QtWidgets.QTreeView.PositionAtCenter)
         elif action == self.reload:
             self.parent.reload()
         elif action == self._action_filter:
@@ -188,7 +224,6 @@ class CallTreeView(QWidget):
         elif action == self._action_clearfilter:
             self.tree.filter("",clear=True)
 
-        
 class TreeDock():
 
     def __init__(self, pctx):
@@ -218,7 +253,7 @@ class TreeDock():
                     else:
                         self.funcs_idx[nam]+=1
                         nam = nam+"/"+str(self.funcs_idx[nam])
-                    
+
                     self.funcs_ival[nam] = (func.start_ea, func.end_ea)
             self.funcs_start[addr] = nam
         return self.funcs_start[addr]
@@ -266,7 +301,7 @@ class TreeDock():
                 callgraph_current[1].append(((nam,0),[],callgraph_current))
                 callgraph_current = callgraph_current[1][-1]
                 backtrace.append(nam)
-        
+
         def recurinside(pc):
             for fnam in backtrace:
                 ival = funcs_ival[fnam]
@@ -284,13 +319,12 @@ class TreeDock():
 
             if last_was_ret:
                 inside = False
-                
+
             cur_insn = idc.print_insn_mnem(pc).lower()
             if cur_insn == "ret" or cur_insn == "retn":
                 last_was_ret = True
             else:
                 last_was_ret = False
-
 
             if (not pc in funcs_start or not funcs_start[pc]) and inside:
                 continue
@@ -375,7 +409,6 @@ class TreeDock():
         """
         self.reader = reader
         self.reload()
-
 
     def detach_reader(self):
         """

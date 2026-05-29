@@ -17,7 +17,7 @@ def MonospaceFont():
     Convenience alias for creating a monospace Qt font object.
     """
     font = QtGui.QFont("Courier New")
-    font.setStyleHint(QtGui.QFont.TypeWriter)
+    font.setStyleHint(QtGui.QFont.StyleHint.TypeWriter)
     return font
 
 #------------------------------------------------------------------------------
@@ -45,8 +45,8 @@ def focus_window():
     """
     mb = QtWidgets.QMessageBox(get_qmainwindow())
     mb.setText("Click to take focus...")
-    mb.setStandardButtons(QtWidgets.QMessageBox.Ok)
-    button = mb.button(QtWidgets.QMessageBox.Ok)
+    mb.setStandardButtons(QtWidgets.QMessageBox.StandardButton.Ok)
+    button = mb.button(QtWidgets.QMessageBox.StandardButton.Ok)
     mb.exec_()
 
 def get_dpi_scale():

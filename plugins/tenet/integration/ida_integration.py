@@ -15,6 +15,7 @@ from tenet.types import BreakpointEvent
 from tenet.context import TenetContext
 from tenet.util.misc import register_callback, notify_callback, is_plugin_dev
 from tenet.util.qt import *
+import shiboken6 # use shiboken6
 
 logger = logging.getLogger("Tenet.IDA.Integration")
 
@@ -324,8 +325,8 @@ class TenetIDA(TenetCore):
 
             # prep for some shady hacks
             p_qmenu = ctypes.cast(int(popup), ctypes.POINTER(ctypes.c_void_p))[0]
-            qmenu = sip.wrapinstance(int(p_qmenu), QtWidgets.QMenu)
-
+            qmenu = shiboken6.wrapInstance(int(p_qmenu), QtWidgets.QMenu)
+            
             #
             # inject and organize the Tenet plugin actions
             #
@@ -418,7 +419,7 @@ class TenetIDA(TenetCore):
         
         step_over = False
         modifiers = QtGui.QGuiApplication.keyboardModifiers()
-        step_over = bool(modifiers & QtCore.Qt.ShiftModifier)
+        step_over = bool(modifiers & QtCore.Qt.KeyboardModifier.ShiftModifier)
 
         forward_ips = ctx.reader.get_next_ips(trail_length, step_over)
         backward_ips = ctx.reader.get_prev_ips(trail_length, step_over)

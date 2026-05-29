@@ -93,11 +93,12 @@ class RegisterArea(QtWidgets.QAbstractScrollArea):
         self.model = model
 
         font = QtGui.QFont("Courier", pointSize=normalize_font(10))
-        font.setStyleHint(QtGui.QFont.TypeWriter)
+        # CORRECTION : StyleHint
+        font.setStyleHint(QtGui.QFont.StyleHint.TypeWriter)
         self.setFont(font)
 
         fm = QtGui.QFontMetricsF(font)
-        self._char_width = fm.averageCharWidth()
+        self._char_width = fm.horizontalAdvance('10')
         self._char_height = fm.height()
 
         # default to fit roughly 50 printable characters
@@ -108,8 +109,9 @@ class RegisterArea(QtWidgets.QAbstractScrollArea):
         self._reg_fields = {}
         self._hovered_arrow = None
 
-        self.setFocusPolicy(QtCore.Qt.StrongFocus)
-        self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
+        # CORRECTION : FocusPolicy
+        self.setFocusPolicy(QtCore.Qt.FocusPolicy.StrongFocus)
+        self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.setMinimumWidth(3)#self._reg_pos[0] + self._default_width
         self.setMouseTracking(True)
 
@@ -136,8 +138,8 @@ class RegisterArea(QtWidgets.QAbstractScrollArea):
         self._action_follow_in_disassembly = QtWidgets.QAction("Follow in disassembler", None)
         self._action_clear = QtWidgets.QAction("Clear code breakpoints", None)
 
-        # install the right click context menu
-        self.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+        # CORRECTION : ContextMenuPolicy
+        self.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._ctx_menu_handler)
 
     def _init_reg_positions(self):
@@ -147,11 +149,6 @@ class RegisterArea(QtWidgets.QAbstractScrollArea):
         regs = self.model.arch.REGISTERS
         name_x, y = self._reg_pos
 
-        # find the most common length of a register name
-        #reg_char_counts = collections.Counter([len(x) for x in regs])
-        #common_count, _ = reg_char_counts.most_common(1)[0]
-        
-        #No : Take the biggest one :
         max_count = max([len(x) for x in regs])
 
         # compute rects for the average reg labels and values
@@ -163,8 +160,6 @@ class RegisterArea(QtWidgets.QAbstractScrollArea):
         # pre-compute the position of each register in the window
         for reg_name in regs:
 
-            # kind of dirty, but this will push IP a bit further away from the
-            # rest of the registers (it should be the last defined one...)
             if reg_name == self.model.arch.IP:
                 y += self._char_height
 
@@ -199,30 +194,14 @@ class RegisterArea(QtWidgets.QAbstractScrollArea):
         """
         menu = QtWidgets.QMenu()
 
-        # if a register was right clicked, fetch its name
         reg_name = self._pos_to_reg(position)
         if reg_name:
-
-            #
-            # fetch the disassembler context and register value as we may use them
-            # based on the user's context, or the action they select
-            #
-
             dctx = disassembler[self.controller.pctx]
             reg_value = self.model.registers[reg_name]
-
-            #
-            # dynamically populate the right click context menu
-            #
 
             menu.addAction(self._action_copy_value)
             for i in range(tenet.context.NMEM):
                 menu.addAction(self._actions_follow_in_dump[i])
-
-            #
-            # if the register conatins a value that falls within the database,
-            # we want to show it and ensure it's active
-            #
 
             menu.addAction(self._action_follow_in_disassembly)
             if dctx.is_mapped(reg_value):
@@ -230,23 +209,9 @@ class RegisterArea(QtWidgets.QAbstractScrollArea):
             else:
                 self._action_follow_in_disassembly.setEnabled(False)
 
-        #
-        # add a menu option to clear exection breakpoints if there is an
-        # active execution breakpoint set somewhere
-        #
-
         menu.addAction(self._action_clear)
 
-        #
-        # show the right click menu and wait for the user to selection an
-        # action from the list of visible/active actions
-        #
-
         action = menu.exec_(self.mapToGlobal(position))
-
-        #
-        # handle the user selected action
-        #
 
         if action == self._action_copy_value:
             copy_to_clipboard("0x%08X" % reg_value)
@@ -291,33 +256,30 @@ class RegisterArea(QtWidgets.QAbstractScrollArea):
         Qt overload to capture wheel events.
         """
 
-        # no execution breakpoints set, nothing to do
         if not self.pctx.breakpoints.model.bp_exec:
             return
 
-        # mouse hover was not over IP register value, nothing to do
-        field = self._pos_to_field(event.position().toPoint())
+        # PySide6: QWheelEvent n'a plus .pos(), il faut utiliser .position().toPoint()
+        if hasattr(event, 'position'):
+            field = self._pos_to_field(event.position().toPoint())
+        else:
+            field = self._pos_to_field(event.pos())
+
         if not (field and field.name == self.model.arch.IP):
             return
 
-        # get the IP value currently displayed in the reg window
         current_ip = self.model.registers[self.model.arch.IP]
         breakpoints = self.pctx.breakpoints.model.bp_exec
 
-        # loop through the execution-based breakpoints
         for breakpoint_address in breakpoints:
             if breakpoint_address == current_ip:
                 break
-
-        # no execution breakpoints match the hovered IP
         else:
             return
 
-        # scroll up
         if event.angleDelta().y() > 0:
             self.pctx.reader.seek_to_prev(current_ip, BreakpointType.EXEC)
 
-        # scroll down
         elif event.angleDelta().y() < 0:
             self.pctx.reader.seek_to_next(current_ip, BreakpointType.EXEC)
 
@@ -349,29 +311,22 @@ class RegisterArea(QtWidgets.QAbstractScrollArea):
         """
         mouse_position = event.pos()
 
-        # handle duoble (left) click events
-        if event.button() == QtCore.Qt.LeftButton:
+        # CORRECTION : MouseButton
+        if event.button() == QtCore.Qt.MouseButton.LeftButton:
 
-            # confirm that we are consuming the double click event
             event.accept()
-
-            # check if the user clicked a known field
             field = self._pos_to_field(mouse_position)
 
-            # if the double click was *not* on a register field, clear execution breakpoints
             if not field:
                 self.pctx.breakpoints.clear_execution_breakpoints()
                 return
 
-            # ignore if the double clicked field (register) was not the IP reg
             if not (field and field.name == self.model.arch.IP):
                 return
 
-            # ignore if the double click was not on the reg value
             if not field.value_rect.contains(mouse_position):
                 return
 
-            # the user double clicked IP, so set a breakpoint on it
             self.controller.set_ip_breakpoint()
 
     def mousePressEvent(self, event):
@@ -380,37 +335,30 @@ class RegisterArea(QtWidgets.QAbstractScrollArea):
         """
         mouse_position = event.pos()
 
-        # handle click events
-        if event.button() == QtCore.Qt.LeftButton:
+        # CORRECTION : MouseButton
+        if event.button() == QtCore.Qt.MouseButton.LeftButton:
 
-            # check if the user clicked a known field
             field = self._pos_to_field(mouse_position)
 
-            # no field (register name, or register value) was selected
             if not field:
                 self.controller.clear_register_focus()
 
-            # the user clicked on the register value
             elif field.value_rect.contains(mouse_position):
                 self.controller.focus_register_value(field.name)
 
-            # the user clicked on the 'seek to next reg change' arrow
             elif field.next_rect.contains(mouse_position):
                 result = self.pctx.reader.find_next_register_change(field.name)
                 if result != -1:
                     self.pctx.reader.seek(result)
 
-            # the user clicked on the 'seek to prev reg change' arrow
             elif field.prev_rect.contains(mouse_position):
                 result = self.pctx.reader.find_prev_register_change(field.name)
                 if result != -1:
                     self.pctx.reader.seek(result)
 
-            # the user clicked on the register name
             else:
                 self.controller.focus_register_name(field.name)
 
-        # update the view as selection / drawing may change
         self.viewport().update()
 
     def paintEvent(self, event):
@@ -423,80 +371,86 @@ class RegisterArea(QtWidgets.QAbstractScrollArea):
 
         painter = QtGui.QPainter(self.viewport())
 
-        area_size = self.viewport().size()
-        area_rect = self.viewport().rect()
-        widget_size = self.full_size()
+        try:
+            area_size = self.viewport().size()
+            area_rect = self.viewport().rect()
+            widget_size = self.full_size()
 
-        painter.fillRect(area_rect, self.pctx.palette.reg_bg)
+            painter.fillRect(area_rect, self.pctx.palette.reg_bg)
 
-        brush_defualt = painter.brush()
-        brush_selected = QtGui.QBrush(self.pctx.palette.standard_selection_bg)
+            brush_defualt = painter.brush()
+            brush_selected = QtGui.QBrush(self.pctx.palette.standard_selection_bg)
 
-        for reg_name in self.model.arch.REGISTERS:
-            reg_value = self.model.registers[reg_name]
-            reg_field = self._reg_fields[reg_name]
+            for reg_name in self.model.arch.REGISTERS:
+                reg_value = self.model.registers[reg_name]
+                reg_field = self._reg_fields[reg_name]
 
-            # coloring for when the register is selected by the user
-            if reg_name == self.model.focused_reg_name:
-                painter.setBackground(brush_selected)
-                painter.setBackgroundMode(QtCore.Qt.OpaqueMode)
-                painter.setPen(self.pctx.palette.standard_selection_fg)
+                # coloring for when the register is selected by the user
+                if reg_name == self.model.focused_reg_name:
+                    painter.setBackground(brush_selected)
+                    painter.setBackgroundMode(QtCore.Qt.BGMode.OpaqueMode)
+                    painter.setPen(self.pctx.palette.standard_selection_fg)
 
-            # default / unselected register colors
-            else:
-                painter.setBackground(brush_defualt)
-                painter.setBackgroundMode(QtCore.Qt.OpaqueMode)
-                painter.setPen(self.pctx.palette.reg_name_fg)
+                # default / unselected register colors
+                else:
+                    painter.setBackground(brush_defualt)
+                    painter.setBackgroundMode(QtCore.Qt.BGMode.OpaqueMode)
+                    painter.setPen(self.pctx.palette.reg_name_fg)
 
-            # draw register name
-            painter.drawText(reg_field.name_rect, QtCore.Qt.AlignCenter, reg_name)
+                # CORRECTION : AlignmentFlag
+                painter.drawText(reg_field.name_rect, QtCore.Qt.AlignmentFlag.AlignCenter, reg_name)
 
-            reg_nibbles = self.model.arch.POINTER_SIZE * 2
-            if reg_value is None:
-                rendered_value = "?" * reg_nibbles
-            else:
-                rendered_value = f'%0{reg_nibbles}X' % reg_value
+                reg_nibbles = self.model.arch.POINTER_SIZE * 2
+                if reg_value is None:
+                    rendered_value = "?" * reg_nibbles
+                else:
+                    rendered_value = f'%0{reg_nibbles}X' % reg_value
 
-            # color register if its value changed as a result of T-1 (previous instr)
-            if reg_name in self.model.delta_trace:
-                painter.setPen(self.pctx.palette.reg_changed_trace_fg)
+                # color register if its value changed as a result of T-1 (previous instr)
+                if reg_name in self.model.delta_trace:
+                    painter.setPen(self.pctx.palette.reg_changed_trace_fg)
 
-            # color register if its value changed as a result of navigation
-            # TODO: disabled for now, because it seemed more confusing than helpful...
-            elif reg_name in self.model.delta_navigation and False:
-                painter.setPen(self.pctx.palette.reg_changed_navigation_fg)
+                # color register if its value changed as a result of navigation
+                elif reg_name in self.model.delta_navigation and False:
+                    painter.setPen(self.pctx.palette.reg_changed_navigation_fg)
 
-            # no special highlighting, default register value color text
-            else:
-                painter.setPen(self.pctx.palette.reg_value_fg)
+                # no special highlighting, default register value color text
+                else:
+                    painter.setPen(self.pctx.palette.reg_value_fg)
 
-            # coloring for when the register is selected by the user
-            if reg_name == self.model.focused_reg_value:
-                painter.setPen(self.pctx.palette.standard_selection_fg)
-                painter.setBackground(brush_selected)
-                painter.setBackgroundMode(QtCore.Qt.OpaqueMode)
+                # coloring for when the register is selected by the user
+                if reg_name == self.model.focused_reg_value:
+                    painter.setPen(self.pctx.palette.standard_selection_fg)
+                    painter.setBackground(brush_selected)
+                    painter.setBackgroundMode(QtCore.Qt.BGMode.OpaqueMode)
 
-            # default / unselected register colors
-            else:
-                painter.setBackground(brush_defualt)
-                painter.setBackgroundMode(QtCore.Qt.OpaqueMode)
+                # default / unselected register colors
+                else:
+                    painter.setBackground(brush_defualt)
+                    painter.setBackgroundMode(QtCore.Qt.BGMode.OpaqueMode)
 
-            # special highlighting of the instruction pointer if it matches an active breakpoint
-            if reg_name == self.model.arch.IP:
-                if reg_value in self.model.execution_breakpoints:
-                    painter.setPen(self.pctx.palette.navigation_selection_fg)
-                    painter.setBackground(self.pctx.palette.navigation_selection_bg)
+                # special highlighting of the instruction pointer if it matches an active breakpoint
+                if reg_name == self.model.arch.IP:
+                    if reg_value in self.model.execution_breakpoints:
+                        painter.setPen(self.pctx.palette.navigation_selection_fg)
+                        painter.setBackground(self.pctx.palette.navigation_selection_bg)
 
-            # draw register value
-            painter.drawText(reg_field.value_rect, QtCore.Qt.AlignCenter, rendered_value)
+                # CORRECTION : AlignmentFlag
+                painter.drawText(reg_field.value_rect, QtCore.Qt.AlignmentFlag.AlignCenter, rendered_value)
 
-            # don't draw arrows next to RIP's value
-            if reg_name == self.model.arch.IP:
-                continue
+                # don't draw arrows next to RIP's value
+                if reg_name == self.model.arch.IP:
+                    continue
 
-            # draw register arrows
-            for i, rect in enumerate([reg_field.prev_rect, reg_field.next_rect]):
-                self._draw_arrow(painter, rect, i)
+                # draw register arrows
+                for i, rect in enumerate([reg_field.prev_rect, reg_field.next_rect]):
+                    self._draw_arrow(painter, rect, i)
+        except Exception as e:
+            import traceback
+            print(e)
+            traceback.print_exc() 
+        finally:
+            painter.end()
 
     def _draw_arrow(self, painter, rect, index):
         path = QtGui.QPainterPath()
@@ -524,14 +478,8 @@ class RegisterArea(QtWidgets.QAbstractScrollArea):
         path.lineTo(tip_x, tip_y)
         path.lineTo(top_x, top_y)
 
-        # dev / debug helper
-        #painter.setPen(QtCore.Qt.green)
-        #painter.setBrush(QtGui.QBrush(QtGui.QColor("white")))
-        #painter.drawRect(rect)
-
-        # paint the defined triangle
-        # TODO: don't hardcode colors
-        painter.setPen(QtCore.Qt.black)
+        # CORRECTION : GlobalColor
+        painter.setPen(QtCore.Qt.GlobalColor.black)
 
         if self._hovered_arrow == rect:
             if index:

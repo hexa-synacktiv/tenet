@@ -25,6 +25,14 @@ INVALID_POS = -1
 INVALID_IDX = -1
 INVALID_DENSITY = -1
 
+try:
+    from PySide6.QtCore import Qt as PySideQt
+    line_style = PySideQt.PenStyle.SolidLine
+except ImportError:
+    line_style = QtCore.Qt.PenStyle.SolidLine
+
+
+
 class TraceBar(QtWidgets.QWidget):
     """
     A trace visualization.
@@ -123,10 +131,16 @@ class TraceBar(QtWidgets.QWidget):
         self._painter_cursor = None
         self._painter_final = None
 
-        self._pen_cursor = QtGui.QPen(self.pctx.palette.trace_cursor_highlight, 1, QtCore.Qt.SolidLine)
+        self._pen_cursor = QtGui.QPen(self.pctx.palette.trace_cursor_highlight, 1, line_style)
 
-        self._pen_selection = QtGui.QPen(self.pctx.palette.trace_selection, self._selection_border, QtCore.Qt.SolidLine)
-        self._brush_selection = QtGui.QBrush(QtCore.Qt.Dense6Pattern)
+        self._pen_selection = QtGui.QPen(self.pctx.palette.trace_selection, self._selection_border, line_style)
+        try:
+            # Pour PySide6 (IDA 9.x)
+            self._brush_selection = QtGui.QBrush(QtCore.Qt.BrushStyle.Dense6Pattern)
+        except AttributeError:
+            # Pour PyQt5 (anciennes versions d'IDA)
+            self._brush_selection = QtGui.QBrush(QtCore.Qt.Dense6Pattern)
+            
         self._brush_selection.setColor(self.pctx.palette.trace_selection_border)
 
         self._last_hovered = INVALID_IDX
@@ -346,7 +360,13 @@ class TraceBar(QtWidgets.QWidget):
 
         # holding the shift key while scrolling is used to 'step over'
         mod_keys = QtGui.QGuiApplication.keyboardModifiers()
-        step_over = bool(mod_keys & QtCore.Qt.ShiftModifier)
+        
+        # PySide6: utilisation stricte des enums et de '.value'
+        if hasattr(mod_keys, 'value'):
+            step_over = bool(mod_keys.value & QtCore.Qt.KeyboardModifier.ShiftModifier.value)
+        else:
+            # Fallback (au cas où)
+            step_over = bool(mod_keys & QtCore.Qt.KeyboardModifier.ShiftModifier)
 
         # scrolling up, so step 'backwards' through the trace
         if event.angleDelta().y() > 0:
@@ -794,44 +814,50 @@ class TraceBar(QtWidgets.QWidget):
         do at this time as I don't think we're pressed for perf.
         """
         painter = QtGui.QPainter(self)
+        try:
 
-        #
-        # draw instructions / trace landscape
-        #
+            #
+            # draw instructions / trace landscape
+            #
 
-        self._draw_base()
-        painter.drawImage(0, 0, self._image_base)
+            self._draw_base()
+            painter.drawImage(0, 0, self._image_base)
 
-        #
-        # draw accesses along the trace timeline
-        #
+            #
+            # draw accesses along the trace timeline
+            #
 
-        self._draw_highlights()
-        painter.drawImage(0, 0, self._image_highlights)
+            self._draw_highlights()
+            painter.drawImage(0, 0, self._image_highlights)
 
-        #
-        # draw user region selection over trace timeline
-        #
+            #
+            # draw user region selection over trace timeline
+            #
 
-        self._draw_selection()
-        painter.drawImage(0, 0, self._image_selection)
+            self._draw_selection()
+            painter.drawImage(0, 0, self._image_selection)
 
-        #
-        # draw border around trace timeline
-        #
+            #
+            # draw border around trace timeline
+            #
 
-        self._draw_border()
-        painter.drawImage(0, 0, self._image_border)
+            self._draw_border()
+            painter.drawImage(0, 0, self._image_border)
 
-        #
-        # draw current trace position cursor
-        #
+            #
+            # draw current trace position cursor
+            #
 
-        self._draw_cursor()
-        painter.drawImage(0, 0, self._image_cursor)
+            self._draw_cursor()
+            painter.drawImage(0, 0, self._image_cursor)
 
-        #painter.drawImage(0, 0, self._image_final)
-
+            #painter.drawImage(0, 0, self._image_final)
+        except Exception as e:
+            import traceback
+            print(e)
+            traceback.print_exc() 
+        finally:
+            painter.end()
     def _draw_base(self):
         """
         Draw the trace visualization of executed code.
@@ -844,7 +870,7 @@ class TraceBar(QtWidgets.QWidget):
 
         del self._painter_base
 
-        self._image_base = QtGui.QImage(self.width(), self.height(), QtGui.QImage.Format_ARGB32)
+        self._image_base = QtGui.QImage(self.width(), self.height(), QtGui.QImage.Format.Format_ARGB32)
         self._image_base.fill(self.pctx.palette.trace_bedrock)
         #self._image_base.fill(QtGui.QColor("red")) # NOTE/debug
         self._painter_base = QtGui.QPainter(self._image_base)
@@ -923,7 +949,7 @@ class TraceBar(QtWidgets.QWidget):
         else:
             cell_color = self.pctx.palette.trace_instruction
 
-        border_pen = QtGui.QPen(border_color, self._cell_border, QtCore.Qt.SolidLine)
+        border_pen = QtGui.QPen(border_color, self._cell_border, line_style)
         painter.setPen(border_pen)
         painter.setBrush(cell_color)
 
@@ -965,10 +991,11 @@ class TraceBar(QtWidgets.QWidget):
         # these here (dangling internal pointer to device/image otherwise?!?)
         #
 
-        del self._painter_highlights
+        if hasattr(self, '_painter_highlights'):
+            del self._painter_highlights
 
-        self._image_highlights = QtGui.QImage(self.width(), self.height(), QtGui.QImage.Format_ARGB32)
-        self._image_highlights.fill(QtCore.Qt.transparent)
+        self._image_highlights = QtGui.QImage(self.width(), self.height(), QtGui.QImage.Format.Format_ARGB32)
+        self._image_highlights.fill(QtCore.Qt.GlobalColor.transparent)
         self._painter_highlights = QtGui.QPainter(self._image_highlights)
 
         if self.cells_visible:
@@ -990,7 +1017,7 @@ class TraceBar(QtWidgets.QWidget):
             (self._idx_executions, self.pctx.palette.breakpoint),
         ]
 
-        painter.setPen(QtCore.Qt.NoPen)
+        painter.setPen(QtCore.Qt.PenStyle.NoPen)
 
         h = self._cell_height - self._cell_border
 
@@ -1046,8 +1073,8 @@ class TraceBar(QtWidgets.QWidget):
         assert size % 2, "Cursor triangle size must be odd"
 
         del self._painter_cursor
-        self._image_cursor = QtGui.QImage(self.width(), self.height(), QtGui.QImage.Format_ARGB32)
-        self._image_cursor.fill(QtCore.Qt.transparent)
+        self._image_cursor = QtGui.QImage(self.width(), self.height(), QtGui.QImage.Format.Format_ARGB32)
+        self._image_cursor.fill(QtCore.Qt.GlobalColor.transparent)
         self._painter_cursor = QtGui.QPainter(self._image_cursor)
 
         # compute the y coordinate / line to center the user cursor around
@@ -1086,7 +1113,7 @@ class TraceBar(QtWidgets.QWidget):
         if self.cells_visible:
 
             # normal fixed / current reader cursor
-            self._painter_cursor.setPen(QtCore.Qt.NoPen)
+            self._painter_cursor.setPen(QtCore.Qt.PenStyle.NoPen)
             self._painter_cursor.setBrush(self.pctx.palette.trace_cursor_highlight)
 
             if draw_reader_cursor:
@@ -1129,11 +1156,12 @@ class TraceBar(QtWidgets.QWidget):
         # these here (dangling internal pointer to device/image otherwise?!?)
         #
 
-        del self._painter_selection
+        if hasattr(self, '_painter_selection'):
+            del self._painter_selection
 
         viz_w, viz_h = self.viz_size
-        self._image_selection = QtGui.QImage(self.width(), self.height(), QtGui.QImage.Format_ARGB32)
-        self._image_selection.fill(QtCore.Qt.transparent)
+        self._image_selection = QtGui.QImage(self.width(), self.height(), QtGui.QImage.Format.Format_ARGB32)
+        self._image_selection.fill(QtCore.Qt.GlobalColor.transparent)
         self._painter_selection = QtGui.QPainter(self._image_selection)
 
         # active / on-going selection event
@@ -1187,13 +1215,13 @@ class TraceBar(QtWidgets.QWidget):
 
         del self._painter_border
 
-        self._image_border = QtGui.QImage(wid_w, wid_h, QtGui.QImage.Format_ARGB32)
-        self._image_border.fill(QtCore.Qt.transparent)
+        self._image_border = QtGui.QImage(wid_w, wid_h, QtGui.QImage.Format.Format_ARGB32)
+        self._image_border.fill(QtCore.Qt.GlobalColor.transparent)
         self._painter_border = QtGui.QPainter(self._image_border)
 
         color = self.pctx.palette.trace_border
         #color = QtGui.QColor("red") # NOTE: for dev/debug testing
-        border_pen = QtGui.QPen(color, self._trace_border, QtCore.Qt.SolidLine)
+        border_pen = QtGui.QPen(color, self._trace_border, line_style)
         self._painter_border.setPen(border_pen)
 
         w = wid_w - self._trace_border
@@ -1282,7 +1310,7 @@ class TraceView(QtWidgets.QWidget):
         self._action_close = self._menu.addAction("Close trace")
 
         # install the right click context menu
-        self.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+        self.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._ctx_menu_handler)
 
     #--------------------------------------------------------------------------

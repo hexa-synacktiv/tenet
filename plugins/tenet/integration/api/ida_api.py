@@ -27,6 +27,7 @@ import ida_segment
 from .api import DisassemblerCoreAPI, DisassemblerContextAPI
 from ...util.qt import *
 from ...util.misc import is_mainthread
+from ...util.qt.shim import USING_PYSIDE6 
 
 logger = logging.getLogger("Tenet.API.IDA")
 
@@ -132,7 +133,10 @@ class IDACoreAPI(DisassemblerCoreAPI):
 
         # get the viewer's qt widget
         viewer_twidget = viewer.GetWidget()
-        viewer_widget = ida_kernwin.PluginForm.TWidgetToPyQtWidget(viewer_twidget)
+        if USING_PYSIDE6:
+            viewer_widget = ida_kernwin.PluginForm.TWidgetToPySideWidget(viewer_twidget)
+        else:
+            viewer_widget = ida_kernwin.PluginForm.TWidgetToPyQtWidget(viewer_twidget)
 
         # fetch the background color property
         #viewer.Show() # TODO: re-enable!
@@ -165,7 +169,10 @@ class IDACoreAPI(DisassemblerCoreAPI):
         twidget = ida_kernwin.create_empty_widget(window_title)
 
         # cast the IDA 'twidget' as a Qt widget for use
-        dockable = ida_kernwin.PluginForm.TWidgetToPyQtWidget(twidget)
+        if USING_PYSIDE6:
+            dockable = ida_kernwin.PluginForm.TWidgetToPySideWidget(twidget)
+        else:
+            dockable = ida_kernwin.PluginForm.TWidgetToPyQtWidget(twidget)
         layout = dockable.layout()
         layout.addWidget(widget)
 
@@ -510,16 +517,25 @@ class DockableWindow(ida_kernwin.PluginForm):
 
     def OnCreate(self, form):
         #print("Creating", self.title)
-        self.parent = self.FormToPyQtWidget(form)
+        if USING_PYSIDE6:
+            self.parent = self.FormToPySideWidget(form)
+        else:
+            self.parent = self.FormToPyQtWidget(form)
 
+        # Création et configuration du Layout
         layout = QtWidgets.QVBoxLayout()
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(0, 0, 0, 0) # Optionnel: pour éviter des marges grises
         layout.addWidget(self.widget)
-        self.parent.setLayout(layout)
 
-        if ida_pro.IDA_SDK_VERSION < 760:
-            self.__dock_size_hack()
-    
+        # PySide6 n'aime pas qu'on force un Layout s'il y en a déjà un.
+        # On vérifie s'il existe déjà un layout sur le parent.
+        if self.parent.layout() is not None:
+            # S'il y a déjà un layout, on ajoute simplement notre widget dedans
+            self.parent.layout().addWidget(self.widget)
+        else:
+            # Sinon, on applique notre layout
+            self.parent.setLayout(layout)
+
     def OnClose(self, foo):
         self.visible = False
         #print("Closing", self.title)
@@ -575,7 +591,7 @@ class DockableWindow(ida_kernwin.PluginForm):
 
 class IDADockSizeHack(QtCore.QObject):
     def eventFilter(self, obj, event):
-        if event.type() == QtCore.QEvent.WindowActivate:
+        if event.type() == QtCore.QEvent.Type.WindowActivate:
             obj.setMinimumWidth(obj.min_width)
             obj.setMaximumWidth(obj.max_width)
             obj.removeEventFilter(self)

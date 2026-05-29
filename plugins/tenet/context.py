@@ -283,7 +283,7 @@ class TenetContext(object):
         
 
         mw = get_qmainwindow()
-        mw.addToolBar(QtCore.Qt.RightToolBarArea, self.trace)
+        mw.addToolBar(QtCore.Qt.ToolBarArea.RightToolBarArea, self.trace)
         self.trace.show()
 
         # trigger update check
@@ -435,7 +435,7 @@ class TenetContext(object):
             self._last_directory,
             'All Files (*.*)'
         )
-        file_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFiles)
+        file_dialog.setFileMode(QtWidgets.QFileDialog.FileMode.ExistingFiles)
 
         # prompt the user with the file dialog, and await filename(s)
         filenames, _ = file_dialog.getOpenFileNames()

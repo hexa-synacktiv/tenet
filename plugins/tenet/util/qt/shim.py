@@ -19,8 +19,39 @@ QT_AVAILABLE = False
 #    older versions of IDA will be deprecated in Lighthouse v0.9.0
 #
 
+USING_PYSIDE6 = False
 USING_PYQT5 = False
 USING_PYSIDE2 = False
+
+# ------------------------------------------------------------------------------
+# PySide6 Compatibility (IDA 9.x)
+#------------------------------------------------------------------------------
+
+# attempt to load PySide6
+if QT_AVAILABLE == False:
+    try:
+        import PySide6.QtGui as QtGui
+        import PySide6.QtCore as QtCore
+        import PySide6.QtWidgets as QtWidgets
+        
+        # On essaie d'importer shiboken6 pour remplacer sip.wrapinstance plus tard si besoin
+        try:
+            import shiboken6 as shiboken
+        except ImportError:
+            pass
+
+        # alias for less PySide6 <--> PyQt5 shimming
+        QtCore.pyqtSignal = QtCore.Signal
+        QtCore.pyqtSlot = QtCore.Slot
+
+        # importing went okay, PySide6 must be available for use
+        QT_AVAILABLE = True
+        USING_PYSIDE6 = True
+
+    # import failed, PySide6 is not available
+    except ImportError:
+        pass
+print(f"[Tenet] USING_PYSIDE6={USING_PYSIDE6}")
 
 #------------------------------------------------------------------------------
 # PyQt5 Compatibility
@@ -41,6 +72,7 @@ if QT_AVAILABLE == False:
     # import failed, PyQt5 is not available
     except ImportError:
         pass
+print(f"[Tenet] USING_PYQT5={USING_PYQT5}")
 
 #------------------------------------------------------------------------------
 # PySide2 Compatibility
@@ -64,3 +96,5 @@ if QT_AVAILABLE == False:
     # import failed. No Qt / UI bindings available...
     except ImportError:
         pass
+
+print(f"[Tenet] USING_PYSIDE2={USING_PYSIDE2}")
